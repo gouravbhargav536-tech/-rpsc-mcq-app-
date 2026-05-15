@@ -93,6 +93,7 @@ const HighlightedText = ({ text }: { text: string }) => {
   return <>{parts}</>;
 };
 
+import { RPSCDashboard } from './components/RPSCDashboard';
 import { generateQuizQuestions, fetchRPSCNotifications } from './services/geminiService';
 import { Question, QuizConfig, Subject, Difficulty, Language, ThemeType, User, ExamPattern, QuizMode, YTVideo } from './types';
 import { mockAuth } from './services/authService';
@@ -150,30 +151,9 @@ export default function App() {
   const [isRajasthanMapOpen, setIsRajasthanMapOpen] = useState(false);
   const [isVideoLibraryOpen, setIsVideoLibraryOpen] = useState(false);
   const [playingVideo, setPlayingVideo] = useState<YTVideo | null>(null);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [notifLoading, setNotifLoading] = useState(false);
   const [reportedQuestions, setReportedQuestions] = useState<number[]>([]);
 
   const { feedback } = useFeedback();
-
-  // Fetch RPSC Notifications
-  const loadNotifications = useCallback(async () => {
-    setNotifLoading(true);
-    try {
-      const data = await fetchRPSCNotifications();
-      setNotifications(data);
-    } catch (error) {
-      console.error("Error loading notifications:", error);
-    } finally {
-      setNotifLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (screen === 'HOME') {
-      loadNotifications();
-    }
-  }, [screen, loadNotifications]);
 
   // Check for saved quiz on mount
   useEffect(() => {
@@ -960,62 +940,7 @@ export default function App() {
 
                     {/* Latest RPSC Notifications Section */}
                     <div className="mb-10">
-                      <div className="flex items-center justify-between mb-4 px-2">
-                        <h3 className="text-sm md:text-base font-bold text-slate-800 flex items-center gap-2">
-                          <Zap size={18} className="text-amber-500 fill-amber-500" /> 
-                          Latest RPSC Notifications & Exam Dates
-                        </h3>
-                        <button 
-                          onClick={loadNotifications}
-                          className="text-[10px] font-bold text-primary uppercase tracking-widest hover:underline flex items-center gap-1"
-                          disabled={notifLoading}
-                        >
-                          <RotateCcw size={10} className={notifLoading ? 'animate-spin' : ''} /> Refresh
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {notifLoading ? (
-                          Array.from({ length: 2 }).map((_, i) => (
-                            <div key={i} className="h-24 bg-white border border-slate-200 rounded-2xl animate-pulse" />
-                          ))
-                        ) : notifications.length > 0 ? (
-                          notifications.map((notif, idx) => (
-                            <motion.a
-                              key={idx}
-                              href={notif.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.1 }}
-                              className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-primary/30 hover:shadow-md transition-all group flex flex-col justify-between"
-                            >
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${
-                                    notif.type === 'EXAM' ? 'bg-indigo-100 text-indigo-700' : 
-                                    notif.type === 'RESULT' ? 'bg-green-100 text-green-700' : 
-                                    'bg-slate-100 text-slate-700'
-                                  }`}>
-                                    {notif.type}
-                                  </span>
-                                  <span className="text-[9px] font-bold text-slate-400">{notif.date}</span>
-                                </div>
-                                <h4 className="text-xs font-bold text-slate-800 group-hover:text-primary transition-colors line-clamp-1">{notif.title}</h4>
-                                <p className="text-[10px] text-slate-500 line-clamp-1 mt-1">{notif.description}</p>
-                              </div>
-                              <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                                View Official Notice <ChevronRight size={10} />
-                              </div>
-                            </motion.a>
-                          ))
-                        ) : (
-                          <div className="col-span-full p-8 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
-                            <p className="text-xs text-slate-400">Failed to load real-time notifications. Try refreshing.</p>
-                          </div>
-                        )}
-                      </div>
+                      <RPSCDashboard />
                     </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
