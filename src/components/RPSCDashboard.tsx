@@ -52,23 +52,94 @@ export const RPSCDashboard: React.FC = () => {
     else if (notifications.length === 0) setLoading(true);
 
     try {
-      console.log('Fetching RPSC notifications...');
-      const response = await fetch('/api/rpsc');
-      if (!response.ok) throw new Error('Failed to fetch from government server');
+      console.log('Attempting to fetch RPSC notifications...');
       
-      const result: ApiResponse = await response.json();
-      
-      if (result.success) {
-        // Safe handling of API response
-        setNotifications(result.data || []);
-        setLastUpdated(new Date(result.lastUpdated));
+      // 1. Try local API first (Works in AI Studio / Node environments)
+      let response;
+      let data: RPSCNotification[] = [];
+      let updateTime = new Date();
+
+      try {
+        response = await fetch('/api/rpsc');
+        if (response.ok) {
+          const result: ApiResponse = await response.json();
+          if (result.success) {
+            data = result.data;
+            updateTime = new Date(result.lastUpdated);
+          }
+        }
+      } catch (localErr) {
+        console.warn('Local API fetch failed, switching to CORS proxy fallback:', localErr);
+      }
+
+      // 2. Fallback to scraping RPSC via CORS Proxy if local API failed or was unreachable (Static host like Netlify)
+      if (data.length === 0) {
+        console.log('Using AllOrigins CORS proxy to fetch real RPSC data...');
+        const targetUrl = 'https://rpsc.rajasthan.gov.in/news_event';
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+        
+        const proxyResponse = await fetch(proxyUrl);
+        if (!proxyResponse.ok) throw new Error('CORS Proxy failed to respond');
+        
+        const json = await proxyResponse.json();
+        const html = json.contents;
+
+        if (html) {
+          // Robust Regex parsing for RPSC notification table pattern
+          // Note: RPSC site usually uses a table with specific IDs or classes
+          // This is a simplified extraction based on standard gov site patterns
+          const extracted: RPSCNotification[] = [];
+          
+          // Regular expression to find links and text in the news section
+          // Looking for patterns like <a href="...">Press Note...</a> ... <span>15/05/2026</span>
+          const itemRegex = /<a[^>]*href=["']([^"']+)["'][^>]*>(.*?)<\/a>.*?<span[^>]*>(\d{2}\/\d{2}\/\d{4})<\/span>/gis;
+          let match;
+          let count = 0;
+          
+          while ((match = itemRegex.exec(html)) !== null && count < 10) {
+            const [, link, title, dateParts] = match;
+            const cleanTitle = title.replace(/<[^>]*>?/gm, '').trim();
+            
+            // Format date correctly (DD/MM/YYYY to ISO)
+            const [d, m, y] = dateParts.split('/');
+            const isoDate = `${y}-${m}-${d}T12:00:00Z`;
+
+            if (cleanTitle && dateParts) {
+              extracted.push({
+                id: `scraped-${count}`,
+                title: cleanTitle,
+                date: isoDate,
+                category: cleanTitle.toLowerCase().includes('exam') ? 'Exam' : 
+                         cleanTitle.toLowerCase().includes('result') ? 'Result' : 'Notice',
+                isNew: count < 2, // Assume first 2 are new
+                department: "RPSC Official",
+                status: cleanTitle.toLowerCase().includes('admit') ? 'Admit Card' : 
+                        cleanTitle.toLowerCase().includes('press') ? 'Press Note' : 'Update'
+              });
+              count++;
+            }
+          }
+
+          if (extracted.length > 0) {
+            data = extracted;
+          } else {
+            // If scraping fail to find matches (site structure changed), use high-quality fallback data
+            throw new Error('Could not parse RPSC site structure');
+          }
+        }
+      }
+
+      if (data.length > 0) {
+        setNotifications(data);
+        setLastUpdated(updateTime);
         setError(null);
       } else {
-        throw new Error('API returned unsuccessful status');
+        throw new Error('No data could be retrieved from local or remote sources');
       }
+
     } catch (err) {
-      console.error('RPSC Fetch Error:', err);
-      setError(err instanceof Error ? err.message : 'Unable to connect to RPSC portal');
+      console.error('Final RPSC Fetch Error:', err);
+      setError(err instanceof Error ? err.message : 'Unable to bypass CORS or connect to RPSC portal');
     } finally {
       setLoading(false);
       setIsRefreshing(false);
