@@ -137,12 +137,11 @@ async function startServer() {
         COUNT: ${count}
 
         STRICT EXAM RULES:
-        1. CONTENT PURITY: Only generate questions for ${subject}. If subject is Reasoning, only reasoning. If GK, only GK. DO NOT mix.
-        2. NO unnecessary text. NO markdown code blocks like \`\`\`json.
+        1. Return ONLY a raw JSON object matching the requested schema. Do NOT include Markdown formatting, do NOT include \`\`\`json or \`\`\` tags. Respond with nothing but the JSON object.
+        2. CONTENT PURITY: Only generate questions for ${subject}. If subject is Reasoning, only reasoning. If GK, only GK. DO NOT mix.
         3. Real exam-level quality: RPSC, REET, SSC, UPSC, CET, Railway, Police style.
         4. Options must be clear and distractors must be plausible.
-        5. Return STRICT JSON object only.
-        6. Support ${language} fluently. If Hinglish, use Roman script for Hindi words.
+        5. Support ${language} fluently. If Hinglish, use Roman script for Hindi words.
 
         JSON FORMAT:
         {
