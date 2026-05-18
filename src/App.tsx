@@ -136,6 +136,7 @@ export default function App() {
   });
 
   // Quiz state
+  const [quizMetadata, setQuizMetadata] = useState<FullQuizData | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userAnswers, setUserAnswers] = useState<(string | null)[]>([]);
@@ -194,6 +195,7 @@ export default function App() {
       const progress = {
         config,
         questions,
+        quizMetadata,
         userAnswers,
         currentIndex,
         quizTimer,
@@ -205,7 +207,7 @@ export default function App() {
     } else if (screen === 'RESULTS') {
       localStorage.removeItem('rpsc_current_quiz');
     }
-  }, [screen, userAnswers, currentIndex, quizTimer, isAnswered]);
+  }, [screen, userAnswers, currentIndex, quizTimer, isAnswered, quizMetadata]);
 
   // Restore progress
   const restoreQuiz = () => {
@@ -213,6 +215,7 @@ export default function App() {
     if (saved) {
       const data = JSON.parse(saved);
       setConfig(data.config);
+      setQuizMetadata(data.quizMetadata);
       setQuestions(data.questions);
       setUserAnswers(data.userAnswers);
       setCurrentIndex(data.currentIndex);
@@ -382,14 +385,15 @@ export default function App() {
     setLoading(true);
     // Don't change screen yet, stay in RULES with loading state
     try {
-      const generatedQuestions = await generateQuizQuestions(config);
+      const quizData = await generateQuizQuestions(config);
       
-      if (!generatedQuestions || generatedQuestions.length === 0) {
+      if (!quizData || !quizData.questions || quizData.questions.length === 0) {
         throw new Error("No questions returned");
       }
 
-      setQuestions(generatedQuestions);
-      setUserAnswers(new Array(generatedQuestions.length).fill(null));
+      setQuizMetadata(quizData);
+      setQuestions(quizData.questions);
+      setUserAnswers(new Array(quizData.questions.length).fill(null));
       setCurrentIndex(0);
       setQuizTimer(0);
       setIsAnswered(false);
@@ -1341,9 +1345,9 @@ export default function App() {
                                  onChange={(e) => setConfig({ ...config, questionCount: parseInt(e.target.value) })}
                                  className="w-full bg-slate-50 border border-slate-200 p-3 md:p-4 text-xs md:text-sm font-medium focus:border-primary outline-none appearance-none"
                                >
-                                 <option value={5}>05 QUESTIONS</option>
-                                 <option value={10}>10 QUESTIONS</option>
-                                 <option value={15}>15 QUESTIONS</option>
+                                 {[5, 10, 15, 20, 25, 30, 50, 75, 100, 120].map(cnt => (
+                                   <option key={cnt} value={cnt}>{cnt} QUESTIONS</option>
+                                 ))}
                                </select>
                             </div>
                           </div>
@@ -1506,8 +1510,13 @@ export default function App() {
                               >
                                 <div className="flex flex-wrap items-center gap-3 mb-8">
                                   <span className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-[2px] uppercase bg-main text-surface shadow-sm">
-                                    {isReviewMode ? 'REFINE AREA' : config.subject}
+                                    {isReviewMode ? 'REFINE AREA' : (quizMetadata?.examName || config.subject)}
                                   </span>
+                                  {quizMetadata?.analysis && (
+                                    <span className="px-4 py-1.5 rounded-full text-[10px] font-bold tracking-[2px] uppercase bg-indigo-500/10 text-indigo-600 border border-indigo-500/20 shadow-sm">
+                                      {quizMetadata.analysis.examStyle}
+                                    </span>
+                                  )}
                                   <span className={`px-4 py-1.5 rounded-full text-[10px] font-bold tracking-[2px] uppercase border shadow-sm ${
                                     config.difficulty === 'Easy' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' :
                                     config.difficulty === 'Medium' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' :

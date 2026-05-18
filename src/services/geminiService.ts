@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Question, QuizConfig } from "../types";
+import { Question, QuizConfig, FullQuizData } from "../types";
 
 let aiInstance: GoogleGenAI | null = null;
 
@@ -13,7 +13,7 @@ function getAI(): GoogleGenAI {
   return aiInstance;
 }
 
-export async function generateQuizQuestions(config: QuizConfig): Promise<Question[]> {
+export async function generateQuizQuestions(config: QuizConfig): Promise<FullQuizData> {
   const { subject, difficulty, language, questionCount, topic } = config;
 
   try {
@@ -42,23 +42,33 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
       throw new Error("Invalid question structure from server");
     }
 
-    // Map new ultra-fast format to internal Question interface
-    return data.questions.map((q: any, index: number) => ({
+    const mappedQuestions = data.questions.map((q: any, index: number) => ({
       id: `q-${index}-${Date.now()}`,
       question: q.question,
       options: q.options,
       correctAnswer: q.correct_answer,
       explanation: q.explanation,
       difficulty: q.difficulty || data.difficulty || difficulty,
-      teacherInsight: "Focus on this key concept for your RPSC preparation.",
+      teacherInsight: `RPSC Expert Insight: ${data.exam_analysis?.question_style || "Focus on this core concept."}`,
       wrongOptionsAnalysis: {
-        A: "Distractor based on common misconceptions.",
-        B: "Distractor based on common misconceptions.",
-        C: "Distractor based on common misconceptions.",
-        D: "Distractor based on common misconceptions."
+        A: "Analysis: Distractor based on common misconceptions.",
+        B: "Analysis: Distractor based on common misconceptions.",
+        C: "Analysis: Distractor based on common misconceptions.",
+        D: "Analysis: Distractor based on common misconceptions."
       },
-      extraFacts: [],
+      extraFacts: data.exam_analysis?.frequent_topics ? [`Often asked with: ${data.exam_analysis.frequent_topics.join(', ')}`] : [],
     }));
+
+    return {
+      examName: data.exam_name || `${subject} Master Quiz`,
+      analysis: data.exam_analysis ? {
+        examStyle: data.exam_analysis.exam_style,
+        difficultyPattern: data.exam_analysis.difficulty_pattern,
+        frequentTopics: data.exam_analysis.frequent_topics,
+        questionStyle: data.exam_analysis.question_style
+      } : undefined,
+      questions: mappedQuestions
+    };
   } catch (error) {
     console.error("Error generating quiz:", error);
     
@@ -104,7 +114,10 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
       }
     ];
 
-    return fallbackQuestions;
+    return {
+      examName: "RPSC Backup Exam Pattern",
+      questions: fallbackQuestions
+    };
   }
 }
 

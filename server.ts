@@ -129,28 +129,43 @@ async function startServer() {
     try {
       const isDaily = mode === 'daily';
       const prompt = `
-        TASK: Generate an PRECISE high-quality MCQ quiz for exclusively the subject: "${subject}".
-        STYLE: ${isDaily ? 'Daily Mixed Practice' : 'Subject-focused exam level'}
-        TOPIC: ${topic && topic !== 'General' ? topic : `Core ${subject} syllabus (No mix-ins)`}
-        DIFFICULTY: ${difficulty}
-        LANGUAGE: ${language} (Hinglish means Hindi text written in Roman script mixed with English).
-        COUNT: ${count}
-
+        TASK: You are an expert RPSC Exam Pattern Analyzer and MCQ Generator. Generate an EXACT high-quality MCQ quiz matching the real RPSC pattern for subject: "${subject}".
+        
+        SOURCE RULES:
+        Use ONLY: Official RPSC documents, authorized exam papers, official government PDFs/syllabus. Ignore unofficial coaching notes.
+        
+        DIFFICULTY & STYLE:
+        Default to HARD competitive exam level. Use real RPSC old-paper styles: direct MCQ, statement-based, assertion-reason, match the following, chronology/order, Rajasthan GK factuals, etc.
+        
         STRICT EXAM RULES:
-        1. Return ONLY a raw JSON object matching the requested schema. Do NOT include Markdown formatting, do NOT include \`\`\`json or \`\`\` tags. Respond with nothing but the JSON object.
+        1. COUNT: You MUST return EXACTLY ${count} questions. No more, no less. (Requested count: ${count}).
         2. CONTENT PURITY: Only generate questions for ${subject}. If subject is Reasoning, only reasoning. If GK, only GK. DO NOT mix.
         3. Real exam-level quality: RPSC, REET, SSC, UPSC, CET, Railway, Police style.
-        4. Options must be clear and distractors must be plausible.
-        5. Support ${language} fluently. If Hinglish, use Roman script for Hindi words.
-
+        4. Return ONLY a raw JSON object matching the requested schema. Do NOT include Markdown formatting, do NOT include \`\`\`json or \`\`\` tags.
+        5. Support ${language} fluently. For Hinglish, use Roman script for Hindi words.
+        
         JSON FORMAT:
         {
-          "quiz_title": "${subject} ${isDaily ? 'Daily Challenge' : 'Practice'}",
+          "exam_name": "RPSC ${subject} Practice",
+          "subject": "${subject}",
+          "topic": "${topic || 'General'}",
           "language": "${language}",
           "difficulty": "${difficulty}",
+          "question_count": ${count},
+          "source_policy": {
+            "allowed_sources_only": true,
+            "source_type": ["official_pdf", "authorized_exam_paper"]
+          },
+          "exam_analysis": {
+            "exam_style": "Combined RPSC Pattern",
+            "difficulty_pattern": "Competitive Mode",
+            "frequent_topics": ["${topic || subject}"],
+            "question_style": "Exam-standard MCQ"
+          },
           "questions": [
             {
               "question_no": 1,
+              "question_type": "MCQ",
               "question": "string",
               "options": {
                 "A": "string",
@@ -159,7 +174,7 @@ async function startServer() {
                 "D": "string"
               },
               "correct_answer": "A",
-              "explanation": "short impactful explanation"
+              "explanation": "Short exam-style explanation matching RPSC standards"
             }
           ]
         }
@@ -173,15 +188,35 @@ async function startServer() {
           responseSchema: {
             type: Type.OBJECT,
             properties: {
-              quiz_title: { type: Type.STRING },
+              exam_name: { type: Type.STRING },
+              subject: { type: Type.STRING },
+              topic: { type: Type.STRING },
               language: { type: Type.STRING },
               difficulty: { type: Type.STRING },
+              question_count: { type: Type.NUMBER },
+              source_policy: {
+                type: Type.OBJECT,
+                properties: {
+                  allowed_sources_only: { type: Type.BOOLEAN },
+                  source_type: { type: Type.ARRAY, items: { type: Type.STRING } }
+                }
+              },
+              exam_analysis: {
+                type: Type.OBJECT,
+                properties: {
+                  exam_style: { type: Type.STRING },
+                  difficulty_pattern: { type: Type.STRING },
+                  frequent_topics: { type: Type.ARRAY, items: { type: Type.STRING } },
+                  question_style: { type: Type.STRING }
+                }
+              },
               questions: {
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
                   properties: {
                     question_no: { type: Type.NUMBER },
+                    question_type: { type: Type.STRING },
                     question: { type: Type.STRING },
                     options: {
                       type: Type.OBJECT,
@@ -200,7 +235,7 @@ async function startServer() {
                 }
               }
             },
-            required: ["quiz_title", "language", "difficulty", "questions"]
+            required: ["exam_name", "questions"]
           }
         }
       });

@@ -93,6 +93,19 @@ export interface VideoAnalysis {
   }[];
 }
 
+export interface ExamAnalysis {
+  examStyle: string;
+  difficultyPattern: string;
+  frequentTopics: string[];
+  questionStyle: string;
+}
+
+export interface FullQuizData {
+  examName: string;
+  analysis?: ExamAnalysis;
+  questions: Question[];
+}
+
 export type ThemeType = 'geometric' | 'rajasthan';
 
 export interface User {
