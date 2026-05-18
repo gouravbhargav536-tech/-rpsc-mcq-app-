@@ -59,6 +59,14 @@
   }
 }
 
+@layer base {
+  @media (max-width: 768px) {
+    :root {
+      --base-font-size: 14px;
+    }
+  }
+}
+
 @layer utilities {
   .glass {
     backdrop-filter: blur(12px);
@@ -111,6 +119,7 @@ body,
 .app-container {
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   background: transparent;
   display: flex;
   flex-direction: column;
@@ -401,36 +410,58 @@ body,
 
   .top-bar {
     gap: 8px;
-    padding: 12px;
+    padding: 10px 12px;
   }
 
   .logo-title {
-    font-size: 15px;
+    font-size: 14px;
   }
 
-  .timer-box {
-    min-width: 74px;
-    height: 46px;
+  .logo-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     font-size: 16px;
   }
 
+  .timer-box {
+    min-width: 64px;
+    height: 36px;
+    font-size: 14px;
+    border-radius: 10px;
+  }
+
   .top-btn {
-    padding: 0 14px;
-    height: 44px;
-    font-size: 13px;
+    padding: 0 10px;
+    height: 36px;
+    font-size: 12px;
+    border-radius: 10px;
   }
 
   .ai-loading-card {
-    border-radius: 24px;
-    padding: 30px 16px;
+    border-radius: 20px;
+    padding: 24px 14px;
   }
 
   .loading-title {
-    font-size: 19px;
+    font-size: 17px;
   }
 
   .loading-sub {
-    font-size: 13px;
+    font-size: 12px;
   }
+}
+
+.bottom-nav {
+  @apply fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-200 flex items-center justify-around px-4 z-50 md:hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.nav-item {
+  @apply flex flex-col items-center gap-1 text-slate-400 text-[10px] font-bold;
+}
+
+.nav-item.active {
+  @apply text-primary;
 }
 

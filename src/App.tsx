@@ -43,6 +43,9 @@ import {
   Youtube,
   Clock,
   Target,
+  Video,
+  ArrowRight,
+  Sparkles,
   X
 } from 'lucide-react';
 
@@ -94,6 +97,7 @@ const HighlightedText = ({ text }: { text: string }) => {
 };
 
 import { RPSCDashboard } from './components/RPSCDashboard';
+import { AIVideoStudio } from './components/AIVideoStudio';
 import { generateQuizQuestions, fetchRPSCNotifications } from './services/geminiService';
 import { Question, QuizConfig, Subject, Difficulty, Language, ThemeType, User, ExamPattern, QuizMode, YTVideo } from './types';
 import { mockAuth } from './services/authService';
@@ -108,7 +112,8 @@ import { useFeedback } from './hooks/useFeedback';
 import { UserStats } from './services/youtubeService';
 
 export default function App() {
-  const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS'>('LANDING');
+  const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS' | 'VIDEO_STUDIO'>('LANDING');
+  const [activeTab, setActiveTab] = useState<'HOME' | 'QUIZ' | 'VIDEO' | 'PROFILE'>('HOME');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const { currentTheme, setTheme, recommendedThemeId, availableThemes } = useAppTheme();
@@ -722,14 +727,230 @@ export default function App() {
               {/* Central Section */}
               <section className="flex-1 bg-transparent overflow-y-auto px-4 md:px-12 py-8 md:py-12 flex flex-col pb-32 md:pb-12 xl:px-24">
                 <AnimatePresence mode="wait">
-                  {screen === 'HOME' && (
+                  {screen === 'VIDEO_STUDIO' && (
+          <div className="pt-20">
+            <AIVideoStudio />
+            {/* Back to Home Button floating */}
+            <button 
+              onClick={() => setScreen('HOME')}
+              className="fixed bottom-8 right-8 p-4 bg-white shadow-2xl rounded-2xl border border-slate-100 font-bold text-slate-900 flex items-center gap-2 hover:bg-slate-50 transition-all z-[90]"
+            >
+              <ArrowLeft size={18} /> Home
+            </button>
+          </div>
+        )}
+        
+        {screen === 'HOME' && (
                     <motion.div
                       key="home-grid"
                       initial={{ opacity: 0, scale: 0.98 }}
                       animate={{ opacity: 1, scale: 1 }}
                       className="max-w-4xl mx-auto w-full"
                     >
-                      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 md:mb-10 gap-4 md:gap-6">
+                      {/* Mobile One Screen Layout */}
+                      <div className="md:hidden flex flex-col gap-3 -mt-2">
+                        {activeTab === 'HOME' && (
+                          <>
+                            {/* Header: User & Streak */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <h2 className="text-[17px] font-display font-black text-rose-900 leading-tight">नमस्ते, {user?.name.split(' ')[0]}</h2>
+                                <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider italic">जारी रखें अपनी तैयारी!</p>
+                              </div>
+                              <div className="flex gap-1.5">
+                                {streak > 0 && (
+                                  <div className="flex items-center gap-1 px-2.5 py-1 bg-orange-50 border border-orange-100 rounded-lg">
+                                    <span className="text-sm">🔥</span>
+                                    <span className="text-[11px] font-black text-orange-600">{streak}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1 px-2.5 py-1 bg-indigo-50 border border-indigo-100 rounded-lg">
+                                  <Zap size={11} className="text-indigo-500 fill-indigo-500" />
+                                  <span className="text-[11px] font-black text-indigo-600">{xp}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Quick Targets Row - Compact */}
+                            <div className="grid grid-cols-2 gap-2">
+                              <motion.button 
+                                whileTap={{ scale: 0.95 }}
+                                onClick={startDailyChallenge}
+                                disabled={dailyDone}
+                                className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all h-[74px] ${
+                                  dailyDone 
+                                    ? 'bg-slate-50 border-slate-100 opacity-60' 
+                                    : 'bg-gradient-to-br from-orange-400 to-rose-500 border-rose-600 text-white shadow-md'
+                                }`}
+                              >
+                                <Sun size={18} className={dailyDone ? 'text-slate-300' : 'text-white'} />
+                                <span className="text-[10px] font-black text-center uppercase tracking-tighter leading-none">
+                                  {dailyDone ? 'Completed' : 'Daily Quiz'}
+                                </span>
+                              </motion.button>
+                              
+                              <motion.button 
+                                 whileTap={{ scale: 0.95 }}
+                                 onClick={() => startMistakeReview()}
+                                 disabled={mistakes.length === 0}
+                                 className={`p-2.5 rounded-xl border flex flex-col items-center justify-center gap-1 transition-all h-[74px] ${
+                                   mistakes.length > 0
+                                     ? 'bg-gradient-to-br from-indigo-500 to-purple-600 border-indigo-700 text-white shadow-md'
+                                     : 'bg-slate-50 border-slate-100 text-slate-300'
+                                 }`}
+                              >
+                                 <BrainCircuit size={18} />
+                                 <span className="text-[10px] font-black uppercase tracking-tighter leading-none">Mistakes ({mistakes.length})</span>
+                              </motion.button>
+                            </div>
+
+                            {/* Compact Feature Grid */}
+                            <div className="grid grid-cols-2 gap-2">
+                             <div className="grid grid-cols-2 gap-2">
+                                {[
+                                  { name: 'GK Map', icon: MapIcon, action: () => setIsRajasthanMapOpen(true), color: 'bg-rose-50 text-rose-600 border-rose-100 shadow-sm' },
+                                  { name: 'Gurukul TV', icon: Play, action: () => setIsVideoLibraryOpen(true), color: 'bg-blue-50 text-blue-600 border-blue-100 shadow-sm' },
+                                ].map(feat => (
+                                  <motion.button 
+                                    key={feat.name}
+                                    whileTap={{ scale: 0.95 }}
+                                    onClick={feat.action}
+                                    className={`p-2 rounded-lg border flex items-center justify-center gap-2 transition-all h-10 ${feat.color}`}
+                                  >
+                                    <feat.icon size={13} />
+                                    <span className="text-[9px] font-black uppercase tracking-tighter">{feat.name}</span>
+                                  </motion.button>
+                                ))}
+                              </div>
+                              
+                              <motion.button 
+                                whileTap={{ scale: 0.95 }}
+                                onClick={() => setScreen('VIDEO_STUDIO')}
+                                className="bg-purple-900 border border-purple-800 text-white p-2 rounded-lg flex items-center justify-center gap-2 transition-all h-10 shadow-sm"
+                              >
+                                <Video size={13} className="text-purple-300" />
+                                <span className="text-[9px] font-black uppercase tracking-tighter text-purple-100">AI Video Engine</span>
+                              </motion.button>
+                            </div>
+
+                            {/* Recent Performance Mini */}
+                            <div className="p-3 bg-white border border-slate-100 rounded-xl flex items-center justify-between">
+                              <div className="flex flex-col">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5">Today's Goal</span>
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-base font-black text-slate-800">72%</span>
+                                  <span className="text-[9px] font-bold text-green-500">EXAM READY</span>
+                                </div>
+                              </div>
+                              <div className="w-20 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-primary w-[72%]"></div>
+                              </div>
+                            </div>
+                            
+                            {/* Subjects Grid - Mobile Compact */}
+                            <div className="grid grid-cols-2 gap-2 pt-1">
+                              <div className="col-span-2 flex items-center justify-between mb-0.5">
+                                 <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest">Question Bank</h3>
+                              </div>
+                              {subjects.slice(0, 4).map((sub, idx) => (
+                                <motion.button
+                                  key={sub.name}
+                                  whileTap={{ scale: 0.96 }}
+                                  onClick={() => startSetup(sub.name)}
+                                  className={`p-2.5 border text-left transition-all relative overflow-hidden h-[62px] flex flex-col justify-between ${
+                                    theme === 'rajasthan' 
+                                      ? 'bg-white rounded-xl border-orange-100 shadow-sm' 
+                                      : 'bg-white border-slate-100'
+                                  }`}
+                                >
+                                  <div className={`w-5 h-5 ${
+                                    theme === 'rajasthan' ? 'bg-rose-800' : (sub.color.includes('blue') ? 'bg-primary' : sub.color)
+                                  } text-white flex items-center justify-center rounded-md mb-0.5 shadow-sm`}>
+                                    <sub.icon size={10} />
+                                  </div>
+                                  <h3 className={`text-[9px] font-black leading-tight line-clamp-1 ${
+                                      theme === 'rajasthan' ? 'text-rose-900' : 'text-slate-800'
+                                    } uppercase tracking-tighter`}>{sub.name}</h3>
+                                </motion.button>
+                              ))}
+                              <button 
+                                onClick={() => setActiveTab('QUIZ')}
+                                className="col-span-2 py-2 bg-slate-50 border border-slate-100 text-[10px] font-black text-slate-400 uppercase tracking-widest rounded-lg flex items-center justify-center gap-1"
+                              >
+                                View All Subjects <ChevronRight size={12} />
+                              </button>
+                            </div>
+                          </>
+                        )}
+
+                        {activeTab === 'QUIZ' && (
+                          <div className="flex flex-col gap-4">
+                            <h2 className="text-xl font-display font-black text-slate-900 italic">Exam <span className="text-primary">Library</span></h2>
+                            <div className="grid grid-cols-2 gap-2 pb-20">
+                              {subjects.map((sub, idx) => (
+                                <motion.button
+                                  key={sub.name}
+                                  whileTap={{ scale: 0.96 }}
+                                  onClick={() => startSetup(sub.name)}
+                                  className="p-4 border bg-white rounded-xl border-slate-100 flex flex-col gap-2 shadow-sm"
+                                >
+                                  <div className={`w-8 h-8 ${sub.color} text-white rounded-md flex items-center justify-center`}>
+                                    <sub.icon size={16} />
+                                  </div>
+                                  <span className="text-xs font-black text-slate-800 uppercase tracking-tighter">{sub.name}</span>
+                                </motion.button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {activeTab === 'PROFILE' && (
+                          <div className="flex flex-col gap-4">
+                             <div className="p-6 bg-slate-900 rounded-3xl text-white flex flex-col items-center gap-4">
+                                <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center border-4 border-primary shadow-xl">
+                                   <UserIcon size={40} className="text-primary" />
+                                </div>
+                                <div className="text-center">
+                                   <h2 className="text-xl font-bold">{user?.name}</h2>
+                                   <p className="text-xs text-slate-400 uppercase tracking-widest">{user?.email}</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 w-full mt-4">
+                                   <div className="bg-white/5 p-3 rounded-2xl border border-white/10 text-center">
+                                      <span className="text-[10px] uppercase font-bold text-slate-500">Streak</span>
+                                      <p className="text-lg font-black text-orange-400">{streak} Days</p>
+                                   </div>
+                                   <div className="bg-white/5 p-3 rounded-2xl border border-white/10 text-center">
+                                      <span className="text-[10px] uppercase font-bold text-slate-500">Total XP</span>
+                                      <p className="text-lg font-black text-indigo-400">{xp}</p>
+                                   </div>
+                                </div>
+                             </div>
+
+                             <div className="p-5 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                                <h3 className="text-[11px] font-black text-slate-800 uppercase tracking-widest mb-4">Achievements</h3>
+                                <div className="flex flex-wrap gap-2">
+                                   {badges.map(b => (
+                                     <div key={b} className="px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 rounded-lg text-[10px] font-black uppercase">
+                                        {b}
+                                     </div>
+                                   ))}
+                                </div>
+                             </div>
+
+                             <button 
+                               onClick={handleLogout}
+                               className="w-full py-4 bg-rose-50 text-rose-600 rounded-2xl font-black text-xs uppercase tracking-widest border border-rose-100 flex items-center justify-center gap-2"
+                             >
+                               <LogOut size={16} /> Logout Session
+                             </button>
+                             <div className="h-20" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Desktop Layout */}
+                      <div className="hidden md:block">
+                        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 md:mb-10 gap-4 md:gap-6">
                         <div>
                           <span className="text-[10px] md:text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">Select Examination Subject</span>
                           <h2 className="text-2xl md:text-4xl font-display mt-1 md:mt-2 text-main italic">RPSC <span className="text-primary">Practice Portal</span></h2>
@@ -944,6 +1165,24 @@ export default function App() {
                     </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      <motion.div
+                        whileHover={{ y: -5 }}
+                        className="p-8 rounded-[40px] bg-gradient-to-br from-indigo-900 to-purple-900 text-white shadow-2xl shadow-indigo-200 relative overflow-hidden group cursor-pointer"
+                        onClick={() => setScreen('VIDEO_STUDIO')}
+                      >
+                        <div className="relative z-10">
+                          <div className="w-14 h-14 bg-white/10 backdrop-blur-md rounded-2xl flex items-center justify-center mb-6 border border-white/10">
+                            <Video className="text-purple-300" size={28} />
+                          </div>
+                          <h3 className="text-2xl font-black mb-2 tracking-tight">AI Video Story Engine</h3>
+                          <p className="text-purple-100/70 text-sm mb-6">Turn your study notes into cinematic anime-style stories & reels.</p>
+                          <div className="flex items-center gap-2 text-xs font-bold text-white bg-white/10 w-fit px-4 py-2 rounded-full border border-white/10 group-hover:bg-white group-hover:text-indigo-900 transition-all">
+                            CREATE NOW <ArrowRight size={14} />
+                          </div>
+                        </div>
+                        <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
+                      </motion.div>
+
                         {subjects.map((sub, idx) => (
                           <motion.button
                             key={sub.name}
@@ -973,8 +1212,9 @@ export default function App() {
                           </motion.button>
                         ))}
                       </div>
-                    </motion.div>
-                  )}
+                    </div>
+                  </motion.div>
+                )}
 
                   {screen === 'SETUP' && (
                     <motion.div
@@ -1274,10 +1514,10 @@ export default function App() {
                                   </AnimatePresence>
                                </div>
                                
-                               <h2 className="text-[24px] sm:text-[28px] md:text-[32px] leading-[1.8] font-semibold tracking-wide text-main max-w-[95%] break-words whitespace-normal drop-shadow-sm">
+                               <h2 className="text-[20px] sm:text-[28px] md:text-[32px] leading-[1.6] font-semibold tracking-wide text-main max-w-[95%] break-words whitespace-normal drop-shadow-sm">
                                    <HighlightedText text={formatQuestionText(questions[currentIndex]?.question)} />
                                 </h2>
-                                <div className="w-20 h-1.5 bg-gradient-to-r from-pink-500 to-orange-400 rounded-full mt-10"></div>
+                                <div className="w-16 h-1 bg-gradient-to-r from-pink-500 to-orange-400 rounded-full mt-6"></div>
                               </motion.div>
 
                               {/* Options Grid */}
@@ -1321,15 +1561,15 @@ export default function App() {
                                       whileHover={!isAnswered ? { scale: 1.02, y: -4 } : {}}
                                       whileTap={!isAnswered ? { scale: 0.98 } : {}}
                                       onClick={() => handleSelectAnswer(key)}
-                                      className={`group relative w-full min-h-[85px] flex items-center gap-5 p-5 md:p-6 border-2 transition-all text-left shadow-lg rounded-3xl z-10 ${btnClass}`}
+                                      className={`group relative w-full min-h-[56px] sm:min-h-[85px] flex items-center gap-3 sm:gap-5 p-3 sm:p-5 md:p-6 border-2 transition-all text-left shadow-md sm:shadow-lg rounded-2xl sm:rounded-3xl z-10 ${btnClass}`}
                                     >
-                                      <span className={`w-14 h-14 shrink-0 rounded-2xl flex items-center justify-center font-bold text-xl transition-all border border-transparent ${labelClass}`}>
+                                      <span className={`w-10 h-10 sm:w-14 sm:h-14 shrink-0 rounded-xl flex items-center justify-center font-bold text-base sm:text-xl transition-all border border-transparent ${labelClass}`}>
                                         {key}
                                       </span>
                                       
                                       <div className={`w-px h-10 hidden md:block transition-colors ${isSelected ? 'bg-pink-500/20' : 'bg-border'}`}></div>
 
-                                      <span className={`text-[19px] md:text-[24px] flex-1 leading-relaxed font-semibold break-words transition-colors ${
+                                      <span className={`text-[15px] sm:text-[24px] flex-1 leading-snug sm:leading-relaxed font-semibold break-words transition-colors ${
                                         isSelected && !showResults ? 'text-pink-500' : 'text-main'
                                       }`}>
                                         {value}
@@ -1562,6 +1802,18 @@ export default function App() {
                                <p className="text-[10px] text-muted mt-2 font-bold uppercase">{Math.round((getScore() / questions.length) * 100)}% Match rate</p>
                             </div>
                           </div>
+                        </div>
+
+                        <div className={`p-6 shadow-sm border ${
+                          theme === 'rajasthan' ? 'bg-white rounded-3xl border-rose-100 shadow-rose-100/20' : 'bg-white border-slate-200'
+                        }`}>
+                          <h4 className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-4">AI Story Recap</h4>
+                          <button 
+                            onClick={() => setScreen('VIDEO_STUDIO')}
+                            className="w-full py-4 bg-rose-50 text-rose-600 rounded-xl font-black text-sm flex items-center justify-center gap-2 hover:bg-rose-100 transition-all border border-rose-100"
+                          >
+                            <Sparkles size={16} /> GENERATE RECAP REEL
+                          </button>
                         </div>
 
                         <div className={`p-6 shadow-sm border ${
@@ -1820,6 +2072,55 @@ export default function App() {
                 <span className="flex items-center gap-1.5 text-primary"><div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div> <ShieldCheck size={12} /> <span className="hidden xs:inline">Secure Portal</span></span>
               </div>
             </footer>
+
+            {/* Mobile Bottom Navigation */}
+            <nav className="bottom-nav">
+              <button 
+                onClick={() => {
+                  feedback('click');
+                  setActiveTab('HOME');
+                  setScreen('HOME');
+                }}
+                className={`nav-item ${activeTab === 'HOME' && screen === 'HOME' ? 'active' : ''}`}
+              >
+                <LayoutGrid size={20} />
+                <span>Home</span>
+              </button>
+              <button 
+                onClick={() => {
+                  feedback('click');
+                  setActiveTab('QUIZ');
+                  // Quick start or setup
+                  setScreen('HOME'); 
+                }}
+                className={`nav-item ${activeTab === 'QUIZ' ? 'active' : ''}`}
+              >
+                <Target size={20} />
+                <span>Quizzes</span>
+              </button>
+              <button 
+                onClick={() => {
+                  feedback('click');
+                  setActiveTab('VIDEO');
+                  setIsVideoLibraryOpen(true);
+                }}
+                className={`nav-item ${activeTab === 'VIDEO' ? 'active' : ''}`}
+              >
+                <Play size={20} />
+                <span>Videos</span>
+              </button>
+              <button 
+                onClick={() => {
+                  feedback('click');
+                  setActiveTab('PROFILE');
+                  // We can add a profile screen or just stay here for now
+                }}
+                className={`nav-item ${activeTab === 'PROFILE' ? 'active' : ''}`}
+              >
+                <UserIcon size={20} />
+                <span>Profile</span>
+              </button>
+            </nav>
 
             <AnimatePresence>
               {isMapOpen && (
