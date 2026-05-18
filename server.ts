@@ -129,19 +129,20 @@ async function startServer() {
     try {
       const isDaily = mode === 'daily';
       const prompt = `
-        TASK: Generate an ultra-fast high-quality MCQ quiz for ${subject} exam.
-        STYLE: ${isDaily ? 'Daily Mixed Practice' : 'Topic-focused exam level'}
-        TOPIC: ${topic || 'General'}
+        TASK: Generate an PRECISE high-quality MCQ quiz for exclusively the subject: "${subject}".
+        STYLE: ${isDaily ? 'Daily Mixed Practice' : 'Subject-focused exam level'}
+        TOPIC: ${topic && topic !== 'General' ? topic : `Core ${subject} syllabus (No mix-ins)`}
         DIFFICULTY: ${difficulty}
         LANGUAGE: ${language} (Hinglish means Hindi text written in Roman script mixed with English).
         COUNT: ${count}
 
         STRICT EXAM RULES:
-        1. NO unnecessary text. NO markdown.
-        2. Real exam-level quality: RPSC, REET, SSC, UPSC, CET, Railway, Police style.
-        3. Options must be clear and distractors must be plausible.
-        4. Return STRICT JSON only.
-        5. Support ${language} fluently. If Hinglish, use Roman script for Hindi words.
+        1. CONTENT PURITY: Only generate questions for ${subject}. If subject is Reasoning, only reasoning. If GK, only GK. DO NOT mix.
+        2. NO unnecessary text. NO markdown code blocks like \`\`\`json.
+        3. Real exam-level quality: RPSC, REET, SSC, UPSC, CET, Railway, Police style.
+        4. Options must be clear and distractors must be plausible.
+        5. Return STRICT JSON object only.
+        6. Support ${language} fluently. If Hinglish, use Roman script for Hindi words.
 
         JSON FORMAT:
         {
@@ -205,10 +206,28 @@ async function startServer() {
         }
       });
 
-      res.status(200).send(result.text); 
+      if (!result || !result.text) {
+        throw new Error("Empty response from Gemini");
+      }
+
+      // Safe JSON cleaning and parsing server-side
+      let text = result.text.trim();
+      // Remove any unintentional markdown
+      if (text.startsWith("```")) {
+        text = text.replace(/^```json\n?/, "").replace(/\n?```$/, "");
+      }
+
+      const quizData = JSON.parse(text);
+      
+      // Basic validation
+      if (!quizData.questions || !Array.isArray(quizData.questions)) {
+        throw new Error("Invalid question structure in AI response");
+      }
+
+      res.status(200).json(quizData);
     } catch (error) {
       console.error("Quiz Gen Error:", error);
-      res.status(500).json({ error: "Failed to generate quiz instantly" });
+      res.status(500).json({ error: "Failed to generate quiz instantly", details: error instanceof Error ? error.message : "AI Error" });
     }
   });
 

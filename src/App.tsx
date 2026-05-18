@@ -377,18 +377,28 @@ export default function App() {
   };
 
   const confirmStartQuiz = async () => {
+    if (loading) return; // Prevent double request
     feedback('click');
     setLoading(true);
-    setScreen('QUIZ');
+    // Don't change screen yet, stay in RULES with loading state
     try {
       const generatedQuestions = await generateQuizQuestions(config);
+      
+      if (!generatedQuestions || generatedQuestions.length === 0) {
+        throw new Error("No questions returned");
+      }
+
       setQuestions(generatedQuestions);
       setUserAnswers(new Array(generatedQuestions.length).fill(null));
       setCurrentIndex(0);
       setQuizTimer(0);
       setIsAnswered(false);
+      setScreen('QUIZ');
     } catch (error) {
-      alert("Error generating quiz. Please try again.");
+      console.error("Confirm Start Quiz Error:", error);
+      alert("AI was busy or failed to sync. Starting backup practice mode.");
+      // The generateQuizQuestions already returns fallback if it fails internally,
+      // but just in case it throws something unhandled:
       setScreen('SETUP');
     } finally {
       setLoading(false);
@@ -1270,7 +1280,7 @@ export default function App() {
 
                           <div className="group">
                              <label className="block text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Quiz Language</label>
-                             <div className="grid grid-cols-4 gap-2">
+                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                {(['English', 'Hindi', 'Hinglish', 'Bilingual'] as Language[]).map(lang => (
                                  <button
                                    key={lang}
@@ -1411,11 +1421,20 @@ export default function App() {
                               Back
                            </button>
                            <button 
-                             disabled={!rulesAccepted}
+                             disabled={!rulesAccepted || loading}
                              onClick={confirmStartQuiz}
-                             className="py-4 bg-primary text-white rounded-xl font-bold uppercase text-[10px] tracking-widest disabled:opacity-50 disabled:grayscale transition-all shadow-lg shadow-primary/20 hover:brightness-110 flex items-center justify-center gap-2 active:scale-95"
+                             className={`py-4 bg-primary text-white rounded-xl font-bold uppercase text-[10px] tracking-widest disabled:opacity-50 disabled:grayscale transition-all shadow-lg shadow-primary/20 hover:brightness-110 flex items-center justify-center gap-2 active:scale-95 ${loading ? 'cursor-not-allowed' : ''}`}
                            >
-                              Proceed to Exam <ChevronRight size={14} />
+                             {loading ? (
+                               <>
+                                 <Loader2 size={14} className="animate-spin" />
+                                 AI Syncing...
+                               </>
+                             ) : (
+                               <>
+                                 Proceed to Exam <ChevronRight size={14} />
+                               </>
+                             )}
                            </button>
                         </div>
                       </div>
