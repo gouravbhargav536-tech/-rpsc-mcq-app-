@@ -20,28 +20,28 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
 
   const content = {
     EN: {
-      loginTitle: "Welcome Back",
-      signupTitle: "Create your account",
+      loginTitle: "RPSC Selection Series",
+      signupTitle: "Join the Elite Portal",
       nameLabel: "Full Name",
       emailLabel: "Email Address",
       passLabel: "Password",
       loginBtn: "Sign In",
-      signupBtn: "Sign Up",
-      switchSignup: "Don't have an account? Sign Up",
-      switchLogin: "Already have an account? Sign In",
+      signupBtn: "Join Now",
+      switchSignup: "New Aspirant? Create Account",
+      switchLogin: "Already with us? Sign In",
       passHint: "Use at least 8 characters including a number",
       back: "Back"
     },
     HI: {
-      loginTitle: "आपका स्वागत है",
-      signupTitle: "अपना खाता बनाएं",
+      loginTitle: "RPSC सिलेक्शन सीरीज",
+      signupTitle: "एलीट पोर्टल ज्वाइन करें",
       nameLabel: "पूरा नाम",
       emailLabel: "ईमेल",
       passLabel: "पासवर्ड",
       loginBtn: "साइन इन करें",
-      signupBtn: "साइन अप",
-      switchSignup: "खाता नहीं है? साइन अप करें",
-      switchLogin: "पहले से खाता है? साइन इन करें",
+      signupBtn: "अभी जुड़ें",
+      switchSignup: "नए छात्र? खाता बनाएं",
+      switchLogin: "पुराने छात्र? साइन इन करें",
       passHint: "कम से कम 8 अक्षर सहित एक अंक शामिल करें",
       back: "पीछे"
     }

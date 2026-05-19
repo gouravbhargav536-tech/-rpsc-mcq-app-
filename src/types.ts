@@ -16,6 +16,7 @@ export interface Question {
   imageUrl?: string;
   patternYear?: string;
   extraFacts?: string[];
+  difficulty?: string;
   wrongOptionsAnalysis?: {
     A: string;
     B: string;

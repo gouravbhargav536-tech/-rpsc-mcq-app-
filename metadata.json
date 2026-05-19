@@ -1,6 +1,6 @@
 {
-  "name": "RPSC AI MCQ Master",
-  "description": "Advanced AI-powered exam portal with real-time RPSC tracking and Cinematic AI Video Story Engine for immersive learning.",
+  "name": "RPSC Selection Series",
+  "description": "🚀 Rajasthan’s Smart RPSC Preparation App. Prepare for RAS, REET, 2nd Grade, SI, Patwar, and other Rajasthan exams with AI-powered practice questions designed on real RPSC exam patterns. Practice anywhere, anytime with a fast, smooth, and clean mobile experience built for serious RPSC aspirants.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

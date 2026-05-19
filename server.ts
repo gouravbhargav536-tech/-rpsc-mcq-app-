@@ -129,43 +129,52 @@ async function startServer() {
     try {
       const isDaily = mode === 'daily';
       const prompt = `
-        TASK: You are an expert RPSC Exam Pattern Analyzer and MCQ Generator. Generate an EXACT high-quality MCQ quiz matching the real RPSC pattern for subject: "${subject}".
+        You are the AI engine of a modern mobile-friendly RPSC Exam Preparation App.
+        
+        APP INTRO STYLE:
+        - Mobile-first experience: Smooth, fast, and responsive.
+        - Designed like a professional selection-focused exam app (RAS, SI, REET, 2nd Grade).
+        - Modern card-based layout guidance for content.
+        
+        TASK: Generate a PERFECT high-quality MCQ quiz for the subject: "${subject}".
         
         SOURCE RULES:
-        Use ONLY: Official RPSC documents, authorized exam papers, official government PDFs/syllabus. Ignore unofficial coaching notes.
+        Use ONLY: Official RPSC documents, official government PDFs, and authorized exam patterns. Inspired by previous RPSC and UPSC trends but DO NOT copy exact previous year questions.
         
-        DIFFICULTY & STYLE:
-        Default to HARD competitive exam level. Use real RPSC old-paper styles: direct MCQ, statement-based, assertion-reason, match the following, chronology/order, Rajasthan GK factuals, etc.
+        DIFFICULTY & CONTENT:
+        - STRICTLY HARD competitive exam level. Testing deep concept understanding.
+        - EXAM STYLES: Statement-based, Match the following, and specifically ASSERTION-REASON type questions.
+        - ASSERTION-REASON LOGIC: Ensure Assertion (A) and Reason (R) are both factually correct, and the question tests whether (R) is the correct explanation of (A). Use the standard 4-option logic (A & R true & R explains A, etc.).
+        - TOPICS: Focus heavily on Rajasthan's administrative structure, constitutional evolution, and pivotal historical events as requested.
         
-        STRICT EXAM RULES:
+        STRICT EXAM RULES (FOR MOBILE READABILITY):
         1. COUNT: You MUST return EXACTLY ${count} questions. No more, no less. (Requested count: ${count}).
-        2. CONTENT PURITY: Only generate questions for ${subject}. If subject is Reasoning, only reasoning. If GK, only GK. DO NOT mix.
-        3. Real exam-level quality: RPSC, REET, SSC, UPSC, CET, Railway, Police style.
-        4. Return ONLY a raw JSON object matching the requested schema. Do NOT include Markdown formatting, do NOT include \`\`\`json or \`\`\` tags.
-        5. Support ${language} fluently. For Hinglish, use Roman script for Hindi words.
+        2. COMPACT FORMAT: Keep paragraphs short. Avoid huge text blocks. Use clean spacing. Use mobile-readable phrasing.
+        3. NO SHORTENING: Every question must be fully completed with all fields.
+        4. DISTRACTORS: Options must be highly confusing and logical. Use the selection-challenge style.
+        5. CONTENT PURITY: Only generate questions for ${subject}. If subject is Reasoning, only reasoning. If GK, only GK. DO NOT mix.
+        6. Return ONLY a raw JSON object matching the requested schema. No markdown.
+        7. Support ${language} fluently. For Hinglish, use Roman script for Hindi words.
+        8. FORMAL LANGUAGE: Keep the phrasing clean, formal, and exam-oriented.
         
         JSON FORMAT:
         {
-          "exam_name": "RPSC ${subject} Practice",
+          "exam_name": "RPSC Selection Series: ${subject}",
           "subject": "${subject}",
-          "topic": "${topic || 'General'}",
+          "topic": "${topic || 'High-Yield Core Syllabus'}",
           "language": "${language}",
-          "difficulty": "${difficulty}",
+          "difficulty": "Selection-Hard",
           "question_count": ${count},
-          "source_policy": {
-            "allowed_sources_only": true,
-            "source_type": ["official_pdf", "authorized_exam_paper"]
-          },
           "exam_analysis": {
-            "exam_style": "Combined RPSC Pattern",
-            "difficulty_pattern": "Competitive Mode",
-            "frequent_topics": ["${topic || subject}"],
-            "question_style": "Exam-standard MCQ"
+            "exam_style": "Analytical & Elimination based",
+            "difficulty_pattern": "RPSC Selection Challenge",
+            "frequent_topics": ["${topic || subject} High-Yield"],
+            "question_style": "Statement/Match/Concept-Heavy"
           },
           "questions": [
             {
               "question_no": 1,
-              "question_type": "MCQ",
+              "question_type": "MCQ/Statement/Assertion",
               "question": "string",
               "options": {
                 "A": "string",
@@ -174,7 +183,13 @@ async function startServer() {
                 "D": "string"
               },
               "correct_answer": "A",
-              "explanation": "Short exam-style explanation matching RPSC standards"
+              "explanation": "Short, powerful exam-style explanation (optimized for mobile screen).",
+              "wrong_options_analysis": {
+                "A": "Concise reason why incorrect.",
+                "B": "Concise reason why incorrect.",
+                "C": "Concise reason why incorrect.",
+                "D": "Concise reason why incorrect."
+              }
             }
           ]
         }
@@ -185,6 +200,8 @@ async function startServer() {
         contents: prompt,
         config: {
           responseMimeType: "application/json",
+          maxOutputTokens: 8192,
+          temperature: 0.2,
           responseSchema: {
             type: Type.OBJECT,
             properties: {
@@ -229,7 +246,16 @@ async function startServer() {
                       required: ["A", "B", "C", "D"]
                     },
                     correct_answer: { type: Type.STRING, enum: ["A", "B", "C", "D"] },
-                    explanation: { type: Type.STRING }
+                    explanation: { type: Type.STRING },
+                    wrong_options_analysis: {
+                      type: Type.OBJECT,
+                      properties: {
+                        A: { type: Type.STRING },
+                        B: { type: Type.STRING },
+                        C: { type: Type.STRING },
+                        D: { type: Type.STRING }
+                      }
+                    }
                   },
                   required: ["question_no", "question", "options", "correct_answer", "explanation"]
                 }

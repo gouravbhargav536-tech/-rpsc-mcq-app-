@@ -50,7 +50,7 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<FullQui
       explanation: q.explanation,
       difficulty: q.difficulty || data.difficulty || difficulty,
       teacherInsight: `RPSC Expert Insight: ${data.exam_analysis?.question_style || "Focus on this core concept."}`,
-      wrongOptionsAnalysis: {
+      wrongOptionsAnalysis: q.wrong_options_analysis || {
         A: "Analysis: Distractor based on common misconceptions.",
         B: "Analysis: Distractor based on common misconceptions.",
         C: "Analysis: Distractor based on common misconceptions.",

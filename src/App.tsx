@@ -46,6 +46,8 @@ import {
   Video,
   ArrowRight,
   Sparkles,
+  RefreshCw,
+  Smartphone,
   X
 } from 'lucide-react';
 
@@ -99,7 +101,7 @@ const HighlightedText = ({ text }: { text: string }) => {
 import { RPSCDashboard } from './components/RPSCDashboard';
 import { AIVideoStudio } from './components/AIVideoStudio';
 import { generateQuizQuestions, fetchRPSCNotifications } from './services/geminiService';
-import { Question, QuizConfig, Subject, Difficulty, Language, ThemeType, User, ExamPattern, QuizMode, YTVideo } from './types';
+import { Question, QuizConfig, Subject, Difficulty, Language, ThemeType, User, ExamPattern, QuizMode, YTVideo, FullQuizData } from './types';
 import { mockAuth } from './services/authService';
 import IntroScreen from './components/IntroScreen';
 import AuthScreen from './components/AuthScreen';
@@ -1178,7 +1180,54 @@ export default function App() {
                       <RPSCDashboard />
                     </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/* Selection Series Intro Branding */}
+                    <div className="mb-10 p-8 rounded-[40px] bg-slate-900 border border-slate-800 shadow-2xl relative overflow-hidden group">
+                      <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+                      <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
+                        <div className="w-24 h-24 bg-gradient-to-br from-primary to-rose-500 rounded-3xl flex items-center justify-center shadow-2xl shadow-primary/40 shrink-0 transform group-hover:rotate-6 transition-transform duration-500">
+                          <Target size={48} className="text-white" />
+                        </div>
+                        <div className="text-center md:text-left">
+                          <div className="flex flex-wrap justify-center md:justify-start gap-2 mb-4">
+                            {['RAS', 'REET', 'SI', 'PATWAR', 'CET'].map(tag => (
+                              <span key={tag} className="px-3 py-1 bg-white/10 text-white/80 text-[10px] font-black rounded-lg tracking-wider border border-white/5 uppercase">✔ {tag}</span>
+                            ))}
+                          </div>
+                          <h1 className="text-3xl md:text-5xl font-display font-black text-white mb-3 leading-tight tracking-tight">
+                             Rajasthan’s Smartest <span className="text-primary italic">RPSC Preparation</span> App
+                          </h1>
+                          <p className="text-base text-slate-400 max-w-2xl font-medium leading-relaxed mb-8">
+                            Our AI creates high-quality analytical MCQs with tricky options, detailed explanations, and real competitive exam difficulty to help you practice smarter and score higher.
+                          </p>
+                          
+                          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
+                             {[
+                               { icon: <Zap size={14} />, text: "Hard Mode", color: "text-amber-400" },
+                               { icon: <Target size={14} />, text: "Real Pattern", color: "text-emerald-400" },
+                               { icon: <Activity size={14} />, text: "Smart Prep", color: "text-indigo-400" },
+                               { icon: <Smartphone size={14} />, text: "Mobile First", color: "text-rose-400" }
+                             ].map((feat, i) => (
+                               <div key={i} className="flex items-center gap-2 p-2 bg-white/5 rounded-xl border border-white/5">
+                                 <span className={feat.color}>{feat.icon}</span>
+                                 <span className="text-[10px] font-bold text-white/70 uppercase tracking-wider">{feat.text}</span>
+                               </div>
+                             ))}
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                              <Sparkles size={14} className="text-primary" /> Instant Question Generation
+                            </span>
+                            <div className="h-1 w-1 bg-slate-700 rounded-full hidden md:block"></div>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                               <RefreshCw size={14} className="text-emerald-500" /> Unlimited Practice Sets
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       <motion.div
                         whileHover={{ y: -5 }}
                         className="p-8 rounded-[40px] bg-gradient-to-br from-indigo-900 to-purple-900 text-white shadow-2xl shadow-indigo-200 relative overflow-hidden group cursor-pointer"
@@ -1548,87 +1597,83 @@ export default function App() {
                                 <div className="w-16 h-1 bg-gradient-to-r from-pink-500 to-orange-400 rounded-full mt-6"></div>
                               </motion.div>
 
-                              {/* Options Grid */}
-                              <div className="grid grid-cols-1 gap-5 md:gap-6 mb-12">
-                                {questions[currentIndex] && Object.entries(questions[currentIndex].options).map(([key, value]) => {
-                                  const isCorrect = key === questions[currentIndex].correctAnswer;
-                                  const isSelected = key === userAnswers[currentIndex];
-                                  const showResults = isAnswered && config.mode === 'instant';
-                                  const showSelectionOnly = isAnswered && config.mode === 'exam';
-                                  
-                                  // Default styles (not answered yet or hovering)
-                                  let btnClass = "border-border bg-surface hover:border-pink-500/50 hover:bg-pink-500/5 hover:shadow-[0_8px_30px_rgba(236,72,153,0.15)] hover:-translate-y-1";
-                                  let labelClass = "bg-page text-muted group-hover:bg-gradient-to-br group-hover:from-pink-500 group-hover:to-orange-400 group-hover:text-white group-hover:shadow-lg";
-
-                                  // Selected but result not revealed yet (or in exam mode)
-                                  if (isSelected && !showResults) {
-                                    btnClass = "border-pink-500 bg-pink-500/10 shadow-[0_0_25px_rgba(236,72,153,0.25)] scale-[1.02] pointer-events-none";
-                                    labelClass = "bg-gradient-to-br from-pink-500 to-orange-400 text-white shadow-lg";
-                                  }
-
-                                  // Results revealed state
-                                  if (showResults) {
-                                    if (isCorrect) {
-                                      btnClass = "border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 pointer-events-none ring-2 ring-emerald-500/20 scale-[1.02]";
-                                      labelClass = "bg-emerald-500 text-white border-emerald-500 shadow-lg scale-110";
-                                    } else if (isSelected) {
-                                      btnClass = "border-rose-500 bg-rose-500/10 pointer-events-none";
-                                      labelClass = "bg-rose-500 text-white border-rose-500 shadow-lg";
-                                    } else if (value === questions[currentIndex].correctAnswer) {
-                                      btnClass = "border-emerald-500 bg-emerald-500/5 pointer-events-none animate-pulse-soft";
-                                      labelClass = "bg-emerald-500 text-white shadow-sm";
-                                    } else {
-                                      btnClass = "opacity-30 grayscale pointer-events-none border-border bg-surface shadow-none";
-                                      labelClass = "bg-page text-muted";
-                                    }
-                                  }
-
-                                  return (
-                                    <motion.button
-                                      key={key}
-                                      whileHover={!isAnswered ? { scale: 1.02, y: -4 } : {}}
-                                      whileTap={!isAnswered ? { scale: 0.98 } : {}}
-                                      onClick={() => handleSelectAnswer(key)}
-                                      className={`group relative w-full min-h-[56px] sm:min-h-[85px] flex items-center gap-3 sm:gap-5 p-3 sm:p-5 md:p-6 border-2 transition-all text-left shadow-md sm:shadow-lg rounded-2xl sm:rounded-3xl z-10 ${btnClass}`}
-                                    >
-                                      <span className={`w-10 h-10 sm:w-14 sm:h-14 shrink-0 rounded-xl flex items-center justify-center font-bold text-base sm:text-xl transition-all border border-transparent ${labelClass}`}>
-                                        {key}
-                                      </span>
+                                  <div className="grid grid-cols-1 gap-5 md:gap-6 mb-8">
+                                    {questions[currentIndex] && Object.entries(questions[currentIndex].options).map(([key, value]) => {
+                                      const isCorrect = key === questions[currentIndex].correctAnswer;
+                                      const isSelected = key === userAnswers[currentIndex];
+                                      const showResults = isAnswered && config.mode === 'instant';
                                       
-                                      <div className={`w-px h-10 hidden md:block transition-colors ${isSelected ? 'bg-pink-500/20' : 'bg-border'}`}></div>
-
-                                      <span className={`text-[15px] sm:text-[24px] flex-1 leading-snug sm:leading-relaxed font-semibold break-words transition-colors ${
-                                        isSelected && !showResults ? 'text-pink-500' : 'text-main'
-                                      }`}>
-                                        {value}
-                                      </span>
-
-                                      <AnimatePresence>
-                                        {(isSelected && (!showResults || !isCorrect)) && (
-                                          <motion.div 
-                                            initial={{ scale: 0, rotate: 45 }} 
-                                            animate={{ scale: 1, rotate: 0 }} 
-                                            className={`absolute -right-2 -top-2 w-8 h-8 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white z-20 ${
-                                              showResults && !isCorrect ? 'bg-rose-500' : 'bg-pink-500'
-                                            }`}
-                                          >
-                                            {showResults && !isCorrect ? <XCircle size={18} /> : <CheckCircle2 size={18} />}
-                                          </motion.div>
-                                        )}
-                                        {showResults && isCorrect && (
-                                          <motion.div 
-                                            initial={{ scale: 0, rotate: -45 }} 
-                                            animate={{ scale: 1, rotate: 0 }} 
-                                            className="absolute -right-2 -top-2 w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-xl border-4 border-white z-20"
-                                          >
-                                            <CheckCircle2 size={24} />
-                                          </motion.div>
-                                        )}
-                                      </AnimatePresence>
-                                    </motion.button>
-                                  );
-                                })}
-                              </div>
+                                      // Default styles (not answered yet or hovering)
+                                      let btnClass = "border-border bg-surface hover:border-primary/50 hover:bg-primary/5 hover:shadow-[0_8px_30px_rgba(59,130,246,0.15)] hover:-translate-y-1";
+                                      let labelClass = "bg-page text-muted group-hover:bg-gradient-to-br group-hover:from-primary group-hover:to-indigo-600 group-hover:text-white group-hover:shadow-lg";
+    
+                                      // Selected but result not revealed yet
+                                      if (isSelected && !showResults) {
+                                        btnClass = "border-primary bg-primary/10 shadow-[0_0_25px_rgba(59,130,246,0.25)] scale-[1.02] pointer-events-none";
+                                        labelClass = "bg-gradient-to-br from-primary to-indigo-600 text-white shadow-lg";
+                                      }
+    
+                                      // Results revealed state
+                                      if (showResults) {
+                                        if (isCorrect) {
+                                          btnClass = "border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/10 pointer-events-none ring-2 ring-emerald-500/20 scale-[1.02]";
+                                          labelClass = "bg-emerald-500 text-white border-emerald-500 shadow-lg scale-110";
+                                        } else if (isSelected) {
+                                          btnClass = "border-rose-500 bg-rose-500/10 pointer-events-none";
+                                          labelClass = "bg-rose-500 text-white border-rose-500 shadow-lg";
+                                        } else if (value === questions[currentIndex].correctAnswer) {
+                                          btnClass = "border-emerald-500 bg-emerald-500/5 pointer-events-none animate-pulse-soft";
+                                          labelClass = "bg-emerald-500 text-white shadow-sm";
+                                        } else {
+                                          btnClass = "opacity-30 grayscale pointer-events-none border-border bg-surface shadow-none";
+                                          labelClass = "bg-page text-muted";
+                                        }
+                                      }
+    
+                                      return (
+                                        <motion.button
+                                          key={key}
+                                          whileHover={!isAnswered ? { scale: 1.01, y: -2 } : {}}
+                                          whileTap={!isAnswered ? { scale: 0.99 } : {}}
+                                          onClick={() => handleSelectAnswer(key)}
+                                          className={`group relative w-full min-h-[50px] sm:min-h-[70px] flex items-center gap-3 sm:gap-5 p-3 sm:p-4 md:p-5 border-2 transition-all text-left shadow-sm sm:shadow-md rounded-2xl sm:rounded-3xl z-10 ${btnClass}`}
+                                        >
+                                          <span className={`w-8 h-8 sm:w-12 sm:h-12 shrink-0 rounded-xl flex items-center justify-center font-bold text-sm sm:text-lg transition-all border border-transparent ${labelClass}`}>
+                                            {key}
+                                          </span>
+                                          
+                                          <span className={`text-[14px] sm:text-[20px] flex-1 leading-snug font-semibold break-words transition-colors ${
+                                            isSelected && !showResults ? 'text-primary' : 'text-main'
+                                          }`}>
+                                            {value}
+                                          </span>
+    
+                                          <AnimatePresence>
+                                            {(isSelected && (!showResults || !isCorrect)) && (
+                                              <motion.div 
+                                                initial={{ scale: 0, rotate: 45 }} 
+                                                animate={{ scale: 1, rotate: 0 }} 
+                                                className={`absolute -right-2 -top-2 w-6 h-6 rounded-full flex items-center justify-center text-white shadow-xl border-2 border-white z-20 ${
+                                                  showResults && !isCorrect ? 'bg-rose-500' : 'bg-primary'
+                                                }`}
+                                              >
+                                                {showResults && !isCorrect ? <X size={12} /> : <CheckCircle2 size={12} />}
+                                              </motion.div>
+                                            )}
+                                            {showResults && isCorrect && (
+                                              <motion.div 
+                                                initial={{ scale: 0, rotate: -45 }} 
+                                                animate={{ scale: 1, rotate: 0 }} 
+                                                className="absolute -right-2 -top-2 w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-xl border-2 border-white z-20"
+                                              >
+                                                <CheckCircle2 size={16} />
+                                              </motion.div>
+                                            )}
+                                          </AnimatePresence>
+                                        </motion.button>
+                                      );
+                                    })}
+                                  </div>
 
                               {isAnswered && config.mode === 'instant' && questions[currentIndex] && (
                                 <motion.div
@@ -1987,60 +2032,69 @@ export default function App() {
                             </div>
                          </div>
                          
-                         <div className="space-y-6">
+                          <div className="space-y-10">
                             {questions.map((q, idx) => (
-                              <div key={q.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                                 <div className="p-5 md:p-6 border-b border-slate-50">
-                                    <div className="flex items-start gap-4">
-                                       <span className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-sm shrink-0">
-                                          {idx + 1}
-                                       </span>
-                                       <div className="flex-1">
-                                          <h4 className="text-base md:text-lg font-bold text-main mb-4 leading-snug">
-                                             {q.question}
-                                          </h4>
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                             {Object.entries(q.options).map(([key, val]) => {
-                                               const isCorrect = key === q.correctAnswer;
-                                               const isSelected = key === userAnswers[idx];
-                                               
-                                               let statusClass = "border-slate-100 bg-slate-50 text-slate-600";
-                                               if (isCorrect) statusClass = "border-green-200 bg-green-50 text-green-700 font-bold ring-1 ring-green-100";
-                                               if (isSelected && !isCorrect) statusClass = "border-red-200 bg-red-50 text-red-700 font-bold ring-1 ring-red-100";
+                              <div key={q.id || idx} className="relative">
+                                {/* Mobile-friendly separator */}
+                                <div className="flex items-center gap-4 mb-4 overflow-hidden">
+                                  <div className="h-[1px] flex-1 bg-slate-200"></div>
+                                  <span className="text-[10px] font-black text-slate-300 tracking-[0.5em] whitespace-nowrap">SELECTION PORTAL</span>
+                                  <div className="h-[1px] flex-1 bg-slate-200"></div>
+                                </div>
 
-                                               return (
-                                                 <div key={key} className={`flex items-center gap-3 p-3 border rounded-xl text-xs transition-all ${statusClass}`}>
-                                                    <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold shrink-0 ${isCorrect ? 'bg-green-500 text-white' : (isSelected ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-400')}`}>
-                                                       {key}
-                                                    </span>
-                                                    <span className="flex-1">{val}</span>
-                                                    {isCorrect && <CheckCircle2 size={14} className="text-green-500" />}
-                                                    {isSelected && !isCorrect && <XCircle size={14} className="text-red-500" />}
-                                                 </div>
-                                               );
-                                             })}
-                                          </div>
-                                       </div>
-                                    </div>
-                                 </div>
-                                 <div className="p-6 bg-slate-50/50 flex flex-col md:flex-row gap-6">
-                                    <div className="flex-1">
-                                       <div className="text-[10px] text-amber-600 font-bold uppercase tracking-widest mb-2 flex items-center gap-1">
-                                          <BrainCircuit size={14} /> Guruji's Trick
-                                       </div>
-                                       <p className="text-xs md:text-sm text-slate-700 leading-relaxed font-medium italic">
-                                          {q.teacherInsight}
-                                       </p>
-                                    </div>
-                                    <div className="flex-1 border-t md:border-t-0 md:border-l border-slate-200 pt-4 md:pt-0 md:pl-6">
-                                       <div className="text-[10px] text-primary font-bold uppercase tracking-widest mb-2 flex items-center gap-1">
-                                          <Info size={12} /> Expert Explanation
-                                       </div>
-                                       <p className="text-[11px] md:text-xs text-slate-500 leading-relaxed">
-                                          {q.explanation}
-                                       </p>
-                                    </div>
-                                 </div>
+                                <div className="bg-white border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                                   <div className="p-6 md:p-8 border-b border-slate-50">
+                                      <div className="flex items-start gap-4 flex-col sm:flex-row">
+                                         <span className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center font-bold text-white text-sm shrink-0 shadow-lg shadow-slate-200">
+                                            {idx + 1}
+                                         </span>
+                                         <div className="flex-1">
+                                            <h4 className="text-[16px] md:text-[20px] font-bold text-main mb-6 leading-snug">
+                                               {q.question}
+                                            </h4>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                               {Object.entries(q.options).map(([key, val]) => {
+                                                 const isCorrect = key === q.correctAnswer;
+                                                 const isSelected = key === userAnswers[idx];
+                                                 
+                                                 let statusClass = "border-slate-100 bg-slate-50 text-slate-600";
+                                                 if (isCorrect) statusClass = "border-emerald-200 bg-emerald-50 text-emerald-700 font-bold ring-1 ring-emerald-100";
+                                                 if (isSelected && !isCorrect) statusClass = "border-rose-200 bg-rose-50 text-rose-700 font-bold ring-1 ring-rose-100";
+  
+                                                 return (
+                                                   <div key={key} className={`flex items-center gap-3 p-4 border rounded-2xl text-[13px] transition-all ${statusClass}`}>
+                                                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold shrink-0 ${isCorrect ? 'bg-emerald-500 text-white' : (isSelected ? 'bg-rose-500 text-white' : 'bg-slate-200 text-slate-400')}`}>
+                                                         {key}
+                                                      </span>
+                                                      <span className="flex-1 leading-tight">{val}</span>
+                                                      {isCorrect && <CheckCircle2 size={16} className="text-emerald-500" />}
+                                                      {isSelected && !isCorrect && <X size={16} className="text-rose-500" />}
+                                                   </div>
+                                                 );
+                                               })}
+                                            </div>
+                                         </div>
+                                      </div>
+                                   </div>
+                                   <div className="p-6 bg-slate-50/50 flex flex-col md:flex-row gap-8">
+                                      <div className="flex-1">
+                                         <div className="text-[10px] text-amber-600 font-black uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                            <BrainCircuit size={16} /> GURUJI'S PERSPECTIVE
+                                         </div>
+                                         <p className="text-sm md:text-base text-slate-700 leading-relaxed font-bold italic">
+                                            "{q.teacherInsight}"
+                                         </p>
+                                      </div>
+                                      <div className="flex-1 border-t md:border-t-0 md:border-l border-slate-200 pt-6 md:pt-0 md:pl-8">
+                                         <div className="text-[10px] text-primary font-black uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
+                                            <Info size={14} /> EXPERT EXPLANATION
+                                         </div>
+                                         <p className="text-[12px] md:text-[13px] text-slate-500 leading-relaxed font-medium">
+                                            {q.explanation}
+                                         </p>
+                                      </div>
+                                   </div>
+                                </div>
                               </div>
                             ))}
                          </div>
