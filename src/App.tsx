@@ -481,8 +481,9 @@ export default function App() {
       setCurrentIndex(0);
       setQuizTimer(0);
       setIsAnswered(false);
-    } catch (error) {
-      alert("Error generating quiz. Please try again.");
+    } catch (error: any) {
+      console.error("AI Studio Error Details:", error);
+      alert(`Error: ${error.message}`);
       setScreen('SETUP');
     } finally {
       setLoading(false);

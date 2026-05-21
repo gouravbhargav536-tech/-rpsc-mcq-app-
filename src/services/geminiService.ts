@@ -269,9 +269,9 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
 
     // Guard rail to guarantee we return exactly the requested quantity
     return questions.slice(0, questionCount);
-  } catch (error) {
-    console.error("Error generating quiz:", error);
-    throw new Error("Failed to generate quiz questions. Please try again.");
+  } catch (error: any) {
+    console.error("AI Studio Error Details:", error);
+    throw error;
   }
 }
 
