@@ -1,12 +1,12 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,900&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=Outfit:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&family=Roboto:wght@300;400;500;700;900&family=Montserrat:wght@300;400;500;600;700;800;900&family=Nunito:wght@300;400;500;600;700;800;900&family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Mukta:wght@200;300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,900&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=Outfit:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&family=Noto+Sans+Devanagari:wght@300;400;500;600;700;800;900&family=Roboto:wght@300;400;500;700;900&family=Montserrat:wght@300;400;500;600;700;800;900&family=Nunito:wght@300;400;500;600;700;800;900&family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&family=Mukta:wght@200;300;400;500;600;700;800&display=swap');
 
 @theme {
-  --font-sans: var(--font-main, "Inter"), "Mukta", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Poppins", "Noto Sans Devanagari", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", ui-serif, Georgia, serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-display: var(--font-main, "Poppins"), "Mukta", "Outfit", sans-serif;
+  --font-display: "Poppins", "Noto Sans Devanagari", "Outfit", sans-serif;
   
   /* Dynamic Theme Variable Mapping */
   --color-primary: var(--primary);
@@ -56,14 +56,6 @@
     --font-main: "Inter";
     --border-radius: 1rem;
     --glass-opacity: 0.1;
-  }
-}
-
-@layer base {
-  @media (max-width: 768px) {
-    :root {
-      --base-font-size: 14px;
-    }
   }
 }
 
@@ -119,7 +111,6 @@ body,
 .app-container {
   width: 100%;
   min-height: 100vh;
-  min-height: 100dvh;
   background: transparent;
   display: flex;
   flex-direction: column;
@@ -410,58 +401,36 @@ body,
 
   .top-bar {
     gap: 8px;
-    padding: 10px 12px;
+    padding: 12px;
   }
 
   .logo-title {
-    font-size: 14px;
-  }
-
-  .logo-circle {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    font-size: 16px;
+    font-size: 15px;
   }
 
   .timer-box {
-    min-width: 64px;
-    height: 36px;
-    font-size: 14px;
-    border-radius: 10px;
+    min-width: 74px;
+    height: 46px;
+    font-size: 16px;
   }
 
   .top-btn {
-    padding: 0 10px;
-    height: 36px;
-    font-size: 12px;
-    border-radius: 10px;
+    padding: 0 14px;
+    height: 44px;
+    font-size: 13px;
   }
 
   .ai-loading-card {
-    border-radius: 20px;
-    padding: 24px 14px;
+    border-radius: 24px;
+    padding: 30px 16px;
   }
 
   .loading-title {
-    font-size: 17px;
+    font-size: 19px;
   }
 
   .loading-sub {
-    font-size: 12px;
+    font-size: 13px;
   }
-}
-
-.bottom-nav {
-  @apply fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-slate-200 flex items-center justify-around px-4 z-50 md:hidden;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.nav-item {
-  @apply flex flex-col items-center gap-1 text-slate-400 text-[10px] font-bold;
-}
-
-.nav-item.active {
-  @apply text-primary;
 }
 

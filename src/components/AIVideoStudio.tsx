@@ -26,124 +26,124 @@ export const AIVideoStudio: React.FC = () => {
   const [selectedTopic, setSelectedTopic] = useState<string>('');
 
   const renderDashboard = () => (
-    <div className="space-y-8">
-      {/* Hero Banner */}
-      <div className="relative overflow-hidden rounded-[32px] bg-gradient-to-br from-indigo-900 via-purple-900 to-indigo-950 p-8 md:p-12 text-white">
-        <div className="relative z-10 max-w-2xl">
+    <div className="space-y-4">
+      {/* Hero Banner (Streamlined and Compact) */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-950 via-purple-950 to-slate-950 p-5 sm:p-6 text-white border border-indigo-500/10">
+        <div className="relative z-10 max-w-xl">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2 mb-4"
+            className="flex items-center gap-2 mb-2"
           >
-            <span className="px-3 py-1 bg-white/10 backdrop-blur-md rounded-full text-xs font-bold uppercase tracking-wider text-purple-200 border border-white/10">
+            <span className="px-2 py-0.5 bg-indigo-500/20 backdrop-blur-md rounded-md text-[9px] font-black uppercase tracking-widest text-[#a855f7] border border-indigo-500/20">
               New: Cinematic V3.1
             </span>
           </motion.div>
           <motion.h2 
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-4xl md:text-5xl font-black mb-4 tracking-tight leading-tight"
+            transition={{ delay: 0.05 }}
+            className="text-lg sm:text-2xl font-black mb-1.5 tracking-tight leading-tight"
           >
-            Turn Your Study Material into <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-300 to-purple-300">Cinematic Reels.</span>
+            Turn Your Study Material into <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-400 via-purple-400 to-indigo-400">Cinematic Reels</span>
           </motion.h2>
           <motion.p 
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-purple-100/80 text-lg mb-8"
+            transition={{ delay: 0.1 }}
+            className="text-purple-100/70 text-xs mb-4 leading-relaxed"
           >
             Connect with Google NotebookLM to extract concepts and generate premium anime-style educational stories automatically.
           </motion.p>
           
           <motion.div 
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="flex flex-wrap gap-4"
+            transition={{ delay: 0.15 }}
+            className="flex flex-wrap gap-2.5"
           >
             <button 
               onClick={() => setMode('CREATOR')}
-              className="group flex items-center gap-2 px-8 py-4 bg-white text-indigo-900 rounded-full font-bold hover:bg-purple-50 transition-all active:scale-95 shadow-xl shadow-purple-500/20"
+              className="group flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-black text-xs hover:from-purple-500 hover:to-indigo-500 transition-all active:scale-95 shadow shadow-purple-950/20"
             >
-              <Sparkles size={20} className="text-purple-600" />
+              <Sparkles size={14} className="text-pink-300 animate-pulse" />
               Create AI Reel
-              <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+              <ArrowRight size={13} className="group-hover:translate-x-0.5 transition-transform" />
             </button>
             <button 
               onClick={() => setMode('NOTEBOOK_SYNC')}
-              className="flex items-center gap-2 px-8 py-4 bg-white/10 backdrop-blur-xl border border-white/20 text-white rounded-full font-bold hover:bg-white/20 transition-all active:scale-95"
+              className="flex items-center gap-1.5 px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 text-slate-100 rounded-lg font-black text-xs hover:bg-white/10 transition-all active:scale-95"
             >
-              <NotebookPen size={20} />
+              <NotebookPen size={14} className="text-purple-300" />
               Sync NotebookLM
             </button>
           </motion.div>
         </div>
 
         {/* Decorative elements */}
-        <div className="absolute top-0 right-0 w-[500px] h-full opacity-30 pointer-events-none">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-purple-500 rounded-full blur-[100px] animate-pulse" />
-          <div className="absolute top-20 right-20 w-48 h-48 bg-pink-500 rounded-full blur-[80px]" />
+        <div className="absolute top-0 right-0 w-80 h-full opacity-30 pointer-events-none">
+          <div className="absolute top-1/2 left-1/3 -translate-y-1/2 w-48 h-48 bg-purple-500/20 rounded-full blur-[80px]" />
+          <div className="absolute top-10 right-10 w-24 h-24 bg-pink-500/20 rounded-full blur-[50px]" />
         </div>
       </div>
 
       {/* Grid of tools */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         {[
-          { icon: Clapperboard, title: 'MCQ to Story', desc: 'Turn complex questions into animated visual explanations.', color: 'from-orange-500 to-red-500' },
+          { icon: Clapperboard, title: 'MCQ to Story', desc: 'Turn complex questions into animated explanations.', color: 'from-orange-500 to-red-500' },
           { icon: Zap, title: 'Current Affairs News', desc: 'Daily news reels with AI voiceover and news-style graphics.', color: 'from-blue-500 to-indigo-500' },
           { icon: Layout, title: 'Smart Templates', desc: 'Choose from 20+ cinematic anime storytelling styles.', color: 'from-purple-500 to-pink-500' }
         ].map((tool, i) => (
           <motion.div
             key={i}
-            whileHover={{ y: -5 }}
-            className="p-6 rounded-3xl bg-white border border-slate-100 shadow-sm hover:shadow-xl transition-all cursor-pointer group"
+            whileHover={{ y: -2 }}
+            className="p-4 rounded-xl bg-white border border-slate-150 shadow-sm hover:border-purple-300 transition-all cursor-pointer group"
           >
-            <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${tool.color} flex items-center justify-center text-white mb-4 group-hover:scale-110 transition-transform shadow-lg`}>
-              <tool.icon size={28} />
+            <div className={`w-9 h-9 rounded-lg bg-gradient-to-br ${tool.color} flex items-center justify-center text-white mb-2.5 group-hover:scale-105 transition-transform shadow`}>
+              <tool.icon size={16} />
             </div>
-            <h3 className="text-xl font-bold text-slate-900 mb-2">{tool.title}</h3>
-            <p className="text-slate-500 text-sm leading-relaxed">{tool.desc}</p>
+            <h3 className="text-xs font-black text-slate-800 mb-1">{tool.title}</h3>
+            <p className="text-slate-500 text-[10px] leading-relaxed">{tool.desc}</p>
           </motion.div>
         ))}
       </div>
 
       {/* Recent generations section */}
       <div>
-        <div className="flex items-center justify-between mb-6">
-          <h3 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <History size={24} className="text-slate-400" />
+        <div className="flex items-center justify-between mb-3 mt-1">
+          <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
+            <History size={16} className="text-slate-400" />
             Recent Creations
           </h3>
-          <button onClick={() => setMode('HISTORY')} className="text-indigo-600 font-bold text-sm hover:underline">View All Library</button>
+          <button onClick={() => setMode('HISTORY')} className="text-indigo-600 font-extrabold text-[10px] uppercase tracking-wider hover:underline">View All Library</button>
         </div>
         
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[1, 2].map((_, i) => (
-            <div key={i} className="aspect-[9/16] rounded-2x overflow-hidden relative group cursor-pointer bg-slate-200">
+            <div key={i} className="aspect-[9/16] max-h-[170px] rounded-xl overflow-hidden relative group cursor-pointer bg-slate-200">
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent z-10" />
-              <div className="absolute inset-0 flex items-center justify-center translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all z-20">
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center text-slate-900 shadow-xl">
-                  <Play fill="currentColor" size={20} className="ml-1" />
+              <div className="absolute inset-0 flex items-center justify-center translate-y-2 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all z-20">
+                <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-slate-900 shadow">
+                  <Play fill="currentColor" size={14} className="ml-0.5" />
                 </div>
               </div>
-              <div className="absolute bottom-4 left-4 right-4 z-20">
-                <p className="text-white text-xs font-bold line-clamp-2">RAS 2026: Economics Explained</p>
-                <p className="text-white/60 text-[10px] mt-1 uppercase tracking-tighter">Anime Cinematic • 15s</p>
+              <div className="absolute bottom-2 left-2 right-2 z-20">
+                <p className="text-white text-[9px] font-black line-clamp-2 leading-tight">RAS 2026: Economics Explained</p>
+                <p className="text-white/60 text-[7.5px] mt-0.5 uppercase tracking-wide">Anime • 15s</p>
               </div>
               <img 
                 src={`https://picsum.photos/seed/reel-${i}/300/500`} 
                 alt="Reel thumbnail" 
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                 referrerPolicy="no-referrer"
               />
             </div>
           ))}
-          <div className="aspect-[9/16] rounded-2x border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 group hover:border-indigo-300 hover:text-indigo-400 transition-all cursor-pointer">
-            <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-              <Sparkles size={24} />
+          <div className="aspect-[9/16] max-h-[170px] rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center text-slate-400 group hover:border-indigo-300 hover:text-indigo-400 transition-all cursor-pointer">
+            <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center mb-1 group-hover:scale-105 transition-transform">
+              <Sparkles size={16} />
             </div>
-            <p className="text-xs font-bold uppercase tracking-wider">Start New</p>
+            <p className="text-[9px] font-black uppercase tracking-wider">Start New</p>
           </div>
         </div>
       </div>
@@ -217,24 +217,24 @@ export const AIVideoStudio: React.FC = () => {
   );
 
   return (
-    <div className="min-h-screen bg-[#F8F9FD] py-12 px-4 md:px-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header Navigation */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between mb-12 gap-6">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 bg-indigo-900 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-200">
-              <Video size={32} />
+    <div className="min-h-screen bg-[#F8F9FD] py-4 px-3 sm:px-4">
+      <div className="max-w-7xl mx-auto space-y-4">
+        {/* Header Navigation (Compact and Dense) */}
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-100 gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-indigo-950 rounded-xl flex items-center justify-center text-white shadow-md shadow-indigo-100">
+              <Video size={18} className="text-purple-400" />
             </div>
             <div>
-              <h1 className="text-3xl font-black text-slate-900 tracking-tight">AI Story Engine</h1>
-              <p className="text-slate-400 font-medium text-sm flex items-center gap-2">
-                <Sparkles size={14} className="text-purple-500" />
+              <h1 className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none">AI Story Engine</h1>
+              <p className="text-slate-400 font-bold text-[9px] flex items-center gap-1 mt-0.5 leading-none">
+                <Sparkles size={10} className="text-purple-500" />
                 V3.1 Cinematic Engine Active
               </p>
             </div>
           </div>
 
-          <nav className="flex items-center gap-1 bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
+          <nav className="flex items-center gap-0.5 bg-white p-1 rounded-xl border border-slate-200/80 shadow-sm overflow-x-auto no-scrollbar">
             {[
               { id: 'DASHBOARD', label: 'Studio', icon: Clapperboard },
               { id: 'CREATOR', label: 'Create', icon: Sparkles },
@@ -244,13 +244,13 @@ export const AIVideoStudio: React.FC = () => {
               <button
                 key={nav.id}
                 onClick={() => setMode(nav.id as StudioMode)}
-                className={`flex items-center gap-2 px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${
+                className={`flex items-center gap-1 px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all whitespace-nowrap ${
                   mode === nav.id 
-                    ? 'bg-indigo-900 text-white shadow-lg shadow-indigo-100' 
+                    ? 'bg-indigo-900 text-white shadow-sm' 
                     : 'text-slate-500 hover:bg-slate-50'
                 }`}
               >
-                <nav.icon size={18} />
+                <nav.icon size={13} />
                 {nav.label}
               </button>
             ))}

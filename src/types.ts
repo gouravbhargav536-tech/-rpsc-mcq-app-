@@ -16,7 +16,6 @@ export interface Question {
   imageUrl?: string;
   patternYear?: string;
   extraFacts?: string[];
-  difficulty?: string;
   wrongOptionsAnalysis?: {
     A: string;
     B: string;
@@ -92,19 +91,6 @@ export interface VideoAnalysis {
     seconds: number;
     reason: string;
   }[];
-}
-
-export interface ExamAnalysis {
-  examStyle: string;
-  difficultyPattern: string;
-  frequentTopics: string[];
-  questionStyle: string;
-}
-
-export interface FullQuizData {
-  examName: string;
-  analysis?: ExamAnalysis;
-  questions: Question[];
 }
 
 export type ThemeType = 'geometric' | 'rajasthan';
