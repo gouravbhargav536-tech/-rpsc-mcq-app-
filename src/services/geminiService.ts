@@ -23,7 +23,7 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
   const isLiveQuiz = subject === 'Daily Live Quiz';
   const isDailyChallenge = mode === 'daily';
   
-  // 🎯 फ़िक्स: यहाँ पूरे chunkSizes की लॉजिक सही कर दी गई है ताकि जितने सवाल माँगे जाएँ, उतने ही बनें
+  // 🎯 फ़िक्स: यहाँ पूरे chunkSizes की लॉजिक को पूरी तरह ब्रैकेट के साथ सही कर दिया गया है
   let chunkSizes: number[] = [];
   if (isDailyChallenge) {
     chunkSizes = [10]; 
