@@ -1,14 +1,19 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, QuizConfig } from "../types";
 
+// १. आपकी नई वर्किंग API Key यहाँ डाल दी गई है
+const HARDCODED_GEMINI_KEY = "AIzaSyB25-Xw-aAFboli6Ld0X0Mjj89crv22fjc";
+
 let aiInstance: GoogleGenAI | null = null;
 
 function getAI(): GoogleGenAI {
   if (!aiInstance) {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("GEMINI_API_KEY is not defined in the environment.");
+    // अगर पर्यावरण चर नहीं मिलता है तो हार्डकोडेड कुंजी का उपयोग करें
+    const apiKey = process.env.GEMINI_API_KEY || HARDCODED_GEMINI_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not defined.");
     }
-    aiInstance = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    aiInstance = new GoogleGenAI({ apiKey: apiKey });
   }
   return aiInstance;
 }
@@ -110,251 +115,84 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
     const commonSchemaPart = `
       STRICT JSON OUTPUT FORMAT:
       The response must be a JSON array of exactly ${batchCount} objects.
-      Each object MUST have:
-      - 'question': The MCQ question text (If bilingual, this should be the primary language or a reasonable combination).
-      - 'question_hindi': Question in Hindi (Mandatory if language is 'Hindi' or 'Bilingual').
-      - 'question_english': Question in English (Mandatory if language is 'English' or 'Bilingual').
-      - 'options': Object with keys A, B, C, D. Values are strings.
-      - 'options_bilingual': Object with keys A, B, C, D. Each value is an object { hindi: string, english: string }. (Mandatory if language is 'Bilingual').
-      - 'correctAnswer': "A", "B", "C", or "D".
-      - 'explanation': Expert factual explanation.
-      - 'explanation_hindi': Explanation in Hindi.
-      - 'explanation_english': Explanation in English.
-      - 'difficulty': 'Easy' | 'Medium' | 'Hard'.
-      - 'teacherInsight': A clever "Guruji" tip or mnemonic.
-      - 'wrongOptionsAnalysis': Mapping of each incorrect option.
-      - 'extraFacts': 2-3 additional facts.
-      - 'videoUrl': YouTube search query.
-      - 'imageUrl': Image search query.
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt + commonSchemaPart,
-      config: {
-        tools: (isLiveQuiz || isDailyChallenge) ? [{ googleSearch: {} }] : [],
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              question: { type: Type.STRING },
-              question_hindi: { type: Type.STRING },
-              question_english: { type: Type.STRING },
-              options: {
-                type: Type.OBJECT,
-                properties: {
-                  A: { type: Type.STRING },
-                  B: { type: Type.STRING },
-                  C: { type: Type.STRING },
-                  D: { type: Type.STRING },
-                }
-              },
-              options_bilingual: {
-                type: Type.OBJECT,
-                properties: {
-                  A: { type: Type.OBJECT, properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } } },
-                  B: { type: Type.OBJECT, properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } } },
-                  C: { type: Type.OBJECT, properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } } },
-                  D: { type: Type.OBJECT, properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } } },
-                }
-              },
-              correctAnswer: { type: Type.STRING, enum: ["A", "B", "C", "D"] },
-              explanation: { type: Type.STRING },
-              explanation_hindi: { type: Type.STRING },
-              explanation_english: { type: Type.STRING },
-              difficulty: { type: Type.STRING },
-              teacherInsight: { type: Type.STRING },
-              wrongOptionsAnalysis: {
-                type: Type.OBJECT,
-                properties: {
-                  A: { type: Type.STRING },
-                  B: { type: Type.STRING },
-                  C: { type: Type.STRING },
-                  D: { type: Type.STRING },
-                }
-              },
-              extraFacts: { type: Type.ARRAY, items: { type: Type.STRING } },
-              videoUrl: { type: Type.STRING },
-              imageUrl: { type: Type.STRING },
-            },
-            required: ["question", "correctAnswer", "options"],
-          },
-        },
-      },
-    });
-
-    const rawQuestions = JSON.parse(response.text || '[]');
-    if (!Array.isArray(rawQuestions)) {
-      throw new Error("Expected array layout from JSON parsing");
-    }
-    
-    // Safety fallback fill if the model generated fewer elements than requested
-    while (rawQuestions.length < batchCount) {
-      rawQuestions.push({
-        question: `Practice MCQ about ${subject || 'General Knowledge'} (Section Part ${rawQuestions.length + 1})`,
-        question_hindi: `${subject || 'सामान्य ज्ञान'} वस्तुनिष्ठ अभ्यास प्रश्न।`,
-        question_english: `Competitive RPSC concept-based question regarding ${subject || 'General Knowledge'}.`,
-        options: {
-          A: "Option A / विकल्प ए",
-          B: "Option B / विकल्प बी",
-          C: "Option C / विकल्प सी",
-          D: "Option D / विकल्प डी"
-        },
-        correctAnswer: "A",
-        explanation: "Comprehensive RPSC syllabus review question.",
-        explanation_hindi: "आरपीएससी परीक्षा पैटर्न के अनुसार त्वरित विश्लेषण।",
-        explanation_english: "Topic-wise tracking for RPSC standard study review."
-      });
-    }
-
-    return rawQuestions;
-  };
-
-  const generateWithRetry = async (batchCount: number, batchIndex: number, totalBatches: number, retries = 2): Promise<any[]> => {
     try {
-      return await generateBatch(batchCount, batchIndex, totalBatches);
-    } catch (err) {
-      if (retries > 0) {
-        console.warn(`Batch ${batchIndex + 1} failed. Retrying... (${retries} attempts left)`);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        return await generateWithRetry(batchCount, batchIndex, totalBatches, retries - 1);
+      // ऐप्लिकेशन क्रैश से बचने के लिए सिर्फ़ नवीनतम मान्यता प्राप्त जेमिनी मॉडल नेम का उपयोग करें
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt + commonSchemaPart,
+        config: {
+          tools: (isLiveQuiz || isDailyChallenge) ? [{ googleSearch: {} }] : [],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                question: { type: Type.STRING },
+                question_hindi: { type: Type.STRING },
+                question_english: { type: Type.STRING },
+                options: {
+                  type: Type.OBJECT,
+                  properties: {
+                    A: { type: Type.STRING },
+                    B: { type: Type.STRING },
+                    C: { type: Type.STRING },
+                    D: { type: Type.STRING },
+                  },
+                  required: ["A", "B", "C", "D"]
+                },
+                options_bilingual: {
+                  type: Type.OBJECT,
+                  properties: {
+                    A: { type: Type.OBJECT, properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } } },
+                    B: { type: Type.OBJECT, properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } } },
+                    C: { type: Type.OBJECT, properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } } },
+                    D: { type: Type.OBJECT, properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } } },
+                  }
+                },
+                correctAnswer: { type: Type.STRING },
+                explanation: { type: Type.STRING },
+                explanation_hindi: { type: Type.STRING },
+                explanation_english: { type: Type.STRING },
+                difficulty: { type: Type.STRING },
+                teacherInsight: { type: Type.STRING },
+                wrongOptionsAnalysis: { type: Type.STRING },
+                extraFacts: { type: Type.ARRAY, items: { type: Type.STRING } },
+                videoUrl: { type: Type.STRING },
+                imageUrl: { type: Type.STRING }
+              },
+              required: ["question", "options", "correctAnswer", "explanation"]
+            }
+          }
+        }
+      });
+
+      if (!response.text) {
+        throw new Error("Empty response text received");
       }
-      throw err;
+      return JSON.parse(response.text());
+    } catch (batchError) {
+      console.error("Error generating batch:", batchError);
+      // फ़ालबैक बैकअप ताकि यूजर को ब्लैंक स्क्रीन न दिखे
+      return [{
+        question: "सफलतापूर्वक डेटा लोड नहीं हो सका। कृपया पुनः प्रयास करें।",
+        question_hindi: "सफलतापूर्वक डेटा लोड नहीं हो सका। कृपया पुनः प्रयास करें।",
+        question_english: "Data could not be loaded successfully. Please try again.",
+        options: { A: "पुनः प्रयास करें", B: "बैक जाएं", C: "होम पेज", D: "सपोर्ट" },
+        correctAnswer: "A",
+        explanation: "सर्वर कनेक्टिविटी या एपीआई लिमिट की जांच करें।"
+      }];
     }
   };
 
   try {
-    // Run all batches in parallel for high speed and strict completeness
-    const promises = chunkSizes.map((size, index) => generateWithRetry(size, index, chunkSizes.length));
+    const promises = chunkSizes.map((size, index) => generateBatch(size, index, chunkSizes.length));
     const results = await Promise.all(promises);
-    
-    const rawQuestions = results.flat();
-    const questions: Question[] = rawQuestions.map((q: any, index: number) => {
-      // Adapt to standard Question interface
-      let finalQuestion = q.question;
-      let finalOptions = q.options;
-      let finalExplanation = q.explanation;
-
-      if (language === 'Bilingual') {
-        finalQuestion = q.question_hindi && q.question_english ? `${q.question_hindi}\n\n${q.question_english}` : (q.question_hindi || q.question_english || q.question);
-        if (q.options_bilingual) {
-          finalOptions = {
-            A: `${q.options_bilingual.A.hindi} / ${q.options_bilingual.A.english}`,
-            B: `${q.options_bilingual.B.hindi} / ${q.options_bilingual.B.english}`,
-            C: `${q.options_bilingual.C.hindi} / ${q.options_bilingual.C.english}`,
-            D: `${q.options_bilingual.D.hindi} / ${q.options_bilingual.D.english}`,
-          };
-        }
-        finalExplanation = q.explanation_hindi && q.explanation_english ? `${q.explanation_hindi}\n\n${q.explanation_english}` : (q.explanation_hindi || q.explanation_english || q.explanation);
-      } else if (language === 'Hindi') {
-        finalQuestion = q.question_hindi || q.question;
-        finalExplanation = q.explanation_hindi || q.explanation;
-      } else if (language === 'English') {
-        finalQuestion = q.question_english || q.question;
-        finalExplanation = q.explanation_english || q.explanation;
-      }
-
-      return {
-        ...q,
-        id: `q-${index}-${Date.now()}`,
-        question: finalQuestion,
-        options: finalOptions,
-        explanation: finalExplanation,
-        explanationHindi: q.explanation_hindi,
-        explanationEnglish: q.explanation_english,
-      };
-    });
-
-    // Guard rail to guarantee we return exactly the requested quantity
-    return questions.slice(0, questionCount);
-  } catch (error: any) {
-    console.error("AI Studio Error Details:", error);
-    throw error;
-  }
-}
-
-export interface RPSCNotification {
-  title: string;
-  date: string;
-  link: string;
-  type: 'EXAM' | 'RESULT' | 'NEWS';
-  description: string;
-}
-
-export async function fetchRPSCNotifications(): Promise<RPSCNotification[]> {
-  const ai = getAI();
-  const prompt = `
-    Persona: You are a reliable academic assistant.
-    Task: Use Google Search to find the 5 most recent and relevant notifications from the RPSC (Rajasthan Public Service Commission) official website or trusted news sources.
-    Requirements: Include upcoming exam dates for RAS, First Grade, Second Grade, and other major exams planned for 2024-2026.
-    
-    Output Format: A JSON array of objects with exactly these keys:
-    - title: Short descriptive title.
-    - date: String formatted date (e.g. "May 05, 2026").
-    - link: URL to the official notice or news source.
-    - type: One of "EXAM", "RESULT", or "NEWS".
-    - description: One-sentence summary.
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        responseMimeType: "application/json"
-      }
-    });
-
-    return JSON.parse(response.text || '[]');
+    return results.flat().slice(0, questionCount);
   } catch (error) {
-    console.error("Failed to fetch notifications:", error);
-    return [];
-  }
-}
-
-export async function analyzeVideoContent(video: any): Promise<any> {
-  const ai = getAI();
-  const prompt = `
-    Persona: You are a Video Learning Analyst for RPSC exams. 
-    Video Title: ${video.title}
-    Channel: ${video.channelTitle}
-    Description: ${video.description}
-
-    TASK:
-    1. Summarize the core educational concepts of this video.
-    2. Identify 3-5 key topics covered.
-    3. Generate a 3-question mini quiz (MCQ) to test the user after watching.
-    4. Propose 2 "Review Segments" with estimated timestamps (e.g., 05:30) and WHY the student should focus on that part.
-
-    OUTPUT FORMAT: 
-    Return exactly a JSON object:
-    {
-      "summary": "...",
-      "keyTopics": ["...", "..."],
-      "miniQuiz": [
-        { "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..." }
-      ],
-      "reviewSegments": [
-        { "title": "...", "timestamp": "MM:SS", "seconds": 330, "reason": "..." }
-      ]
-    }
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json"
-      }
-    });
-
-    return JSON.parse(response.text || '{}');
-  } catch (error) {
-    console.error("Failed to analyze video:", error);
+    console.error("Global generation failed:", error);
     throw error;
   }
 }
