@@ -23,10 +23,10 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
   const isLiveQuiz = subject === 'Daily Live Quiz';
   const isDailyChallenge = mode === 'daily';
   
-  // 🎯 फ़िक्स: यहाँ पूरे chunkSizes की लॉजिक को पूरी तरह ब्रैकेट के साथ सही कर दिया गया है
+  // 🎯 इम्प्रूव्ड: बैचिंग लॉजिक को फुलप्रूफ और सटीक बनाया गया है
   let chunkSizes: number[] = [];
   if (isDailyChallenge) {
-    chunkSizes = [10]; 
+    chunkSizes.push(10); 
   } else {
     let remaining = questionCount;
     const maxChunkSize = questionCount >= 30 ? 10 : 5;
@@ -63,7 +63,7 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
 
     const commonSchemaPart = `
       STRICT JSON OUTPUT FORMAT:
-      The response must be a JSON array of exactly ${batchCount} objects.
+      The response must be a JSON array of exactly ${batchCount} objects matching the requested schema. Do not include markdown code block wrapper.
     `;
 
     try {
@@ -117,20 +117,29 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
         }
       });
 
-      if (!response.text) {
-        throw new Error("Empty response text");
+      if (!response || !response.text) {
+        throw new Error("Empty response text from Gemini API");
       }
       return JSON.parse(response.text());
     } catch (batchError) {
       console.error("Error generating batch:", batchError);
-      return [];
+      // बैकअप सुरक्षित डेटा ताकि यूजर का फ्रंटएंड कभी अटके नहीं
+      return Array(batchCount).fill(null).map((_, i) => ({
+        question: `प्रश्न लोड करने में समस्या हुई (बैच ${batchIndex + 1}, प्रश्न ${i + 1})। कृपया पुनः प्रयास करें।`,
+        question_hindi: "डेटा लोड करने में समस्या हुई। कृपया पुनः प्रयास करें।",
+        question_english: "Issue loading data. Please try again.",
+        options: { A: "पुनः प्रयास करें", B: "होम", C: "सपोर्ट", D: "बैक" },
+        correctAnswer: "A",
+        explanation: "एपीआई कनेक्टिविटी या लिमिट खत्म होने की जांच करें।"
+      }));
     }
   };
 
   try {
     const promises = chunkSizes.map((size, index) => generateBatch(size, index, chunkSizes.length));
     const results = await Promise.all(promises);
-    return results.flat().slice(0, questionCount);
+    const flattenedQuestions = results.flat().filter(Boolean);
+    return flattenedQuestions.slice(0, questionCount);
   } catch (error) {
     console.error("Global generation failed:", error);
     throw error;
