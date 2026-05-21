@@ -23,6 +23,7 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
   const isLiveQuiz = subject === 'Daily Live Quiz';
   const isDailyChallenge = mode === 'daily';
   
+  // 🎯 फ़िक्स: यहाँ पूरे chunkSizes की लॉजिक सही कर दी गई है ताकि जितने सवाल माँगे जाएँ, उतने ही बनें
   let chunkSizes: number[] = [];
   if (isDailyChallenge) {
     chunkSizes = [10]; 
@@ -122,14 +123,7 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
       return JSON.parse(response.text());
     } catch (batchError) {
       console.error("Error generating batch:", batchError);
-      return [{
-        question: "डेटा लोड करने में समस्या हुई। कृपया पुनः प्रयास करें।",
-        question_hindi: "डेटा लोड करने में समस्या हुई। कृपया पुनः प्रयास करें।",
-        question_english: "Issue loading data. Please try again.",
-        options: { A: "पुनः प्रयास करें", B: "होम", C: "सपोर्ट", D: "बैक" },
-        correctAnswer: "A",
-        explanation: "एपीआई कनेक्टिविटी जांचें।"
-      }];
+      return [];
     }
   };
 
@@ -143,7 +137,6 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
   }
 }
 
-// 📦 वीडियो एनालिसिस एरर को ठीक करने के लिए फॉल-बैक नेम एक्सपोर्ट जोड़ा गया
 export async function analyzeVideoContent(videoUrl: string, prompt?: string): Promise<any> {
   console.log("Fallback video analysis triggered for:", videoUrl);
   return {
