@@ -54,7 +54,8 @@ import {
   Lock,
   GraduationCap,
   Bookmark,
-  Tv
+  Tv,
+  AlertCircle
 } from 'lucide-react';
 
 const formatQuestionText = (text: string) => {
@@ -189,6 +190,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [rulesAccepted, setRulesAccepted] = useState(false);
   const [hasSavedQuiz, setHasSavedQuiz] = useState(false);
+  const [quizError, setQuizError] = useState<string | null>(null);
   
   // Selection state
   const [config, setConfig] = useState<QuizConfig>({
@@ -473,17 +475,21 @@ export default function App() {
   const confirmStartQuiz = async () => {
     feedback('click');
     setLoading(true);
-    setScreen('QUIZ');
+    setQuizError(null);
     try {
       const generatedQuestions = await generateQuizQuestions(config);
+      if (!generatedQuestions || generatedQuestions.length === 0) {
+        throw new Error("No questions retrieved");
+      }
       setQuestions(generatedQuestions);
       setUserAnswers(new Array(generatedQuestions.length).fill(null));
       setCurrentIndex(0);
       setQuizTimer(0);
       setIsAnswered(false);
+      setScreen('QUIZ');
     } catch (error: any) {
       console.error("AI Studio Error Details:", error);
-      alert(`Error: ${error.message}`);
+      setQuizError("Unable to generate quiz. Please try again.");
       setScreen('SETUP');
     } finally {
       setLoading(false);
@@ -611,6 +617,45 @@ export default function App() {
     >
       <PersonalizationPanel isOpen={personalizationOpen} onClose={() => setPersonalizationOpen(false)} />
 
+      {/* QUIZ GENERATION ERROR POPUP DIALOG */}
+      <AnimatePresence>
+        {quizError && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setQuizError(null)}
+              className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs"
+            />
+            {/* Modal Dialog */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="relative bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl max-w-sm w-full text-center overflow-hidden"
+            >
+              <div className="w-14 h-14 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-4 border border-rose-100">
+                <AlertCircle size={28} />
+              </div>
+              <h3 className="text-base font-extrabold text-slate-900 mb-2 font-display">
+                Quiz Generation Update
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                {quizError}
+              </p>
+              <button
+                onClick={() => setQuizError(null)}
+                className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white transition-colors rounded-xl font-bold uppercase text-xs tracking-wider font-mono"
+              >
+                Acknowledge
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Dynamic Motivational Floating Particles (Only in Motivation/Anime themes) */}
       {(currentTheme.category === 'Motivation' || currentTheme.category === 'Anime') && (
         <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
@@ -648,21 +693,64 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex flex-col items-center justify-center min-h-screen bg-transparent text-slate-900 p-6"
+            className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-6 relative overflow-hidden"
           >
-            <div className="flex items-center gap-4 mb-8">
-              <div className="w-16 h-16 bg-primary rounded flex items-center justify-center text-white font-bold text-3xl shadow-lg font-display">A</div>
-              <h1 className="text-4xl font-bold tracking-tight font-display">RPSC <span className="text-primary underline underline-offset-8 decoration-2 italic">AI-Quizzer</span></h1>
+            {/* Ambient visual depth circles */}
+            <div className="absolute top-1/4 right-1/4 w-80 h-80 bg-rose-500/10 rounded-full blur-[100px] pointer-events-none animate-pulse-soft"></div>
+            <div className="absolute bottom-1/4 left-1/4 w-80 h-80 bg-indigo-500/10 rounded-full blur-[100px] pointer-events-none animate-float"></div>
+
+            <div className="flex flex-col items-center justify-center text-center max-w-sm z-10">
+              {/* Brand icon block */}
+              <motion.div 
+                initial={{ scale: 0.8, rotate: -10, opacity: 0 }}
+                animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                transition={{ duration: 0.6, type: 'spring' }}
+                className="w-20 h-20 bg-gradient-to-br from-amber-500 via-rose-500 to-indigo-600 rounded-2xl flex items-center justify-center text-white font-black text-4xl shadow-2xl shadow-rose-950/40 border border-slate-700/50 mb-6"
+              >
+                UЗ
+              </motion.div>
+
+              <motion.h1 
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="text-3xl font-black tracking-tight font-display mb-1 text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-white to-indigo-200"
+              >
+                RPSC AI Ustad
+              </motion.h1>
+
+              <motion.p 
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.7 }}
+                transition={{ delay: 0.4 }}
+                className="text-xs tracking-[0.2em] uppercase font-bold text-amber-400 mb-8"
+              >
+                CBT Exam Simulator
+              </motion.p>
+
+              {/* Dynamic loading indicators */}
+              <div className="flex flex-col items-center mb-10 w-full px-4">
+                <div className="w-12 h-12 rounded-full border-4 border-slate-800 border-t-amber-500 animate-spin mb-4 shadow-md shadow-amber-500/10"></div>
+                <p className="text-sm font-medium text-slate-300 animate-pulse">
+                  Loading AI Ustad Quiz...
+                </p>
+                <p className="text-[11px] text-slate-500 font-mono mt-1">
+                  Syncing Question Bank & CBT Console
+                </p>
+              </div>
+
+              {/* Hindi footer tagline */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.8 }}
+                className="border-t border-slate-800/80 pt-4 w-full"
+              >
+                <p className="text-xs text-slate-400 italic">
+                  "आपकी तैयारी का सबसे विश्वसनीय डिजिटल गुरु"
+                </p>
+              </motion.div>
             </div>
-            <motion.div
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: 0.5 }}
-              className="text-center"
-            >
-              <p className="text-xl font-light tracking-wide text-slate-300">आपकी तैयारी का स्मार्ट साथी!</p>
-              <p className="text-sm uppercase tracking-[0.3em] mt-4 text-primary font-bold">Initializing Engine</p>
-            </motion.div>
           </motion.div>
         )}
 
@@ -757,7 +845,7 @@ export default function App() {
                     {/* Notification bell button */}
                     {screen === 'HOME' && (
                       <motion.button 
-                        whileHover={{ scale: 1.05, bg: 'rgba(248,250,252,1)' }}
+                        whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                         onClick={() => {
                           feedback('click');
@@ -2140,21 +2228,84 @@ export default function App() {
                           {/* Scrollable Content Container */}
                           <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50">
                             <div className="w-full max-w-2xl mx-auto pt-1 pb-16 px-1.5 sm:px-4 md:py-4">
-                              {/* Progress Header */}
-                              <div className="flex items-center justify-between mb-2 md:mb-3 pt-1">
-                                 <div className="flex flex-col text-left">
-                                    <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider leading-none">Session Progress</span>
-                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                       <div className="h-1.5 w-20 md:w-32 bg-slate-200 rounded-full overflow-hidden">
+                              {/* PRESTIGE CBT STATUS CONTROL STATION */}
+                              <div className="w-[94%] sm:w-full mx-auto mb-3.5 bg-slate-900 border border-slate-800 text-white rounded-2xl p-3.5 shadow-md relative overflow-hidden">
+                                 {/* Radial ambient glow */}
+                                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(59,130,246,0.12),transparent_60%)] pointer-events-none" />
+                                 
+                                 <div className="relative flex flex-col gap-3">
+                                    {/* Row 1: Session Progress Bar with labels */}
+                                    <div className="flex flex-col gap-1">
+                                       <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                                          <span>Session Progress</span>
+                                          <span>{currentIndex + 1} of {questions.length} Questions</span>
+                                       </div>
+                                       <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
                                           <motion.div 
                                              initial={{ width: 0 }}
                                              animate={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
-                                             className="h-full bg-blue-600"
+                                             className="h-full bg-blue-500 rounded-full"
                                           />
                                        </div>
-                                       <span className="text-[10px] font-extrabold text-slate-500 tabular-nums">{(currentIndex + 1)}/{questions.length}</span>
+                                    </div>
+
+                                    {/* Row 2: Subject Details & Live Digital Ticking Clock */}
+                                    <div className="flex items-center justify-between border-t border-b border-slate-800/80 py-2.5">
+                                       <div className="flex flex-col text-left">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                             <span className="text-[10px] sm:text-xs font-extrabold bg-blue-600/20 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-md uppercase tracking-wide">
+                                                {config.subject}
+                                             </span>
+                                             <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${
+                                                config.difficulty === 'Easy' ? 'bg-emerald-50500/10 text-emerald-400 border-emerald-500/20' :
+                                                config.difficulty === 'Medium' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                                             }`}>
+                                                {config.difficulty === 'Easy' ? '🟢 Easy' : config.difficulty === 'Medium' ? '🟡 Medium' : '🔴 Hard'}
+                                             </span>
+                                          </div>
+                                          {config.topic && (
+                                             <span className="text-[9px] font-medium text-slate-400 mt-1 truncate max-w-[140px] sm:max-w-[260px]">
+                                                📌 Focus: {config.topic}
+                                             </span>
+                                          )}
+                                       </div>
+                                       
+                                       {/* Ticking computer-based test Digital Clock */}
+                                       <div className="bg-slate-800/90 border border-slate-700/50 px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-inner min-w-[78px] justify-center select-none shrink-0">
+                                          <Clock size={11} className="text-[#3b82f6] animate-pulse" />
+                                          <span className="font-mono text-xs sm:text-sm font-black tracking-tight text-[#3b82f6]">
+                                             {formatTime(quizTimer)}
+                                          </span>
+                                       </div>
+                                    </div>
+
+                                    {/* Row 3: Live Attempt metrics & negative marking caution */}
+                                    <div className="flex flex-wrap items-center justify-between gap-2.5 text-[10px]">
+                                       <div className="flex items-center gap-3 text-slate-300">
+                                          <div className="flex items-center gap-1.5">
+                                             <span className="text-slate-500">Attempted:</span>
+                                             <span className="font-mono bg-emerald-500/15 text-emerald-400 font-extrabold px-1.5 py-0.5 rounded border border-emerald-500/25">
+                                                {userAnswers.filter(a => a !== null && a !== 'SKIPPED').length}
+                                             </span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5">
+                                             <span className="text-slate-500">Skipped:</span>
+                                             <span className="font-mono bg-amber-500/10 text-amber-400 font-extrabold px-1.5 py-0.5 rounded border border-amber-500/20">
+                                                {userAnswers.filter(a => a === 'SKIPPED').length}
+                                             </span>
+                                          </div>
+                                       </div>
+                                       
+                                       {/* Real negative marking warning badge */}
+                                       <div className="flex items-center select-none">
+                                          <span className="px-2 py-0.5 rounded font-black uppercase text-[8px] sm:text-[9px] bg-rose-500/10 text-rose-400 border border-rose-500/20 tracking-wider">
+                                             ⚠️ 1/3 Negative Penalty applies
+                                          </span>
+                                       </div>
                                     </div>
                                  </div>
+                              </div>
                                  
                                  <AnimatePresence>
                                     {isAnswered && config.mode === 'instant' && (
@@ -2167,11 +2318,10 @@ export default function App() {
                                             : 'bg-rose-50 text-rose-600 border-rose-100'
                                         }`}
                                       >
-                                        {userAnswers[currentIndex] === questions[currentIndex]?.correctAnswer ? 'CORRECT! +1' : 'INCORRECT! -0'}
+                                        {userAnswers[currentIndex] === questions[currentIndex]?.correctAnswer ? 'CORRECT! +1' : 'INCORRECT! -1/3'}
                                       </motion.div>
                                     )}
                                  </AnimatePresence>
-                               </div>
  
                                {/* Question Container */}
                                <motion.div 
@@ -2206,7 +2356,7 @@ export default function App() {
                                        </motion.span>
                                      )}
                                    </AnimatePresence>
-                                </div>
+                                 </div>
                                 
                                 <div 
                                   className={`text-[14px] sm:text-[15px] font-bold leading-relaxed tracking-wide text-slate-900 max-w-full break-words whitespace-normal text-left relative transition-all duration-300 ${!questionExpanded ? 'max-h-[142px] overflow-hidden pb-6' : 'max-h-none'}`}

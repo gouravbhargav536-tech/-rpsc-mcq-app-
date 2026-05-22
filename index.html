@@ -4,47 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RPSC AI-Quizzer</title>
-    <script>
-      (function() {
-        const shadow = {};
-        const handler = {
-          get: function(target, prop) {
-            if (prop in shadow) return shadow[prop];
-            const value = target[prop];
-            if (typeof value === 'function' && value.bind) return value.bind(target);
-            return value;
-          },
-          set: function(target, prop, value) {
-            try {
-              target[prop] = value;
-            } catch (e) {
-              shadow[prop] = value;
-            }
-            return true;
-          },
-          has: function(target, prop) {
-            return prop in shadow || prop in target;
-          }
-        };
-
-        const globalProxy = new Proxy(window, handler);
-
-        try {
-          Object.defineProperty(window, 'global', { value: globalProxy, configurable: true, writable: true });
-        } catch (e) {
-          window.global = globalProxy;
-        }
-
-        if (typeof window.process === 'undefined') {
-          window.process = {
-            env: { NODE_ENV: 'development' },
-            browser: true,
-            version: '',
-            nextTick: function(cb) { setTimeout(cb, 0); }
-          };
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

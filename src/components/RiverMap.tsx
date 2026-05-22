@@ -37,7 +37,7 @@ const createCustomIcon = (isSelected: boolean, _type: string) => {
 
 interface RiverMapProps {
   onClose: () => void;
-  feedback: (type: 'click' | 'success' | 'error' | 'correct' | 'wrong' | 'win' | 'lose') => void;
+  feedback: (type: 'click' | 'success' | 'correct' | 'wrong' | 'royal') => void;
 }
 
 const GANGA_PATH: [number, number][] = [
