@@ -781,4 +781,75 @@ export async function analyzeVideoContent(video: any): Promise<any> {
     };
   }
 }
+}export async function generateQuizQuestions(topic: string, requestedCount: number = 10): Promise<QuizQuestion[]> {
+  let questions: QuizQuestion[] = [];
+  let attempts = 0;
+  
+  // अधिक प्रश्न (जैसे 15, 20 या 30) पूरे करने के लिए अटेम्पट्स को बढ़ाकर 5 किया गया
+  const maxAttempts = 5; 
+  const uniqueQuestionsTracker = new Set<string>();
+
+  while (questions.length < requestedCount && attempts < maxAttempts) {
+    attempts++;
+    try {
+      const remainingCount = requestedCount - questions.length;
+      
+      // प्रत्येक अटेम्पट में जेमिनी को पूरी तरह से नया संदर्भ (Context) देने के लिए डायनेमिक सीड
+      const dynamicSeed = Date.now() + Math.random();
+
+      // प्रॉम्प्ट में ही पिछले प्रश्नों को ट्रैक करने की क्षमता जोड़ना
+      const prompt = `
+        You are an expert examiner. Generate exactly ${remainingCount} unique multiple-choice questions about: "${topic}".
+        
+        CRITICAL RULES:
+        1. GROUNDING: Use verified facts up to the current year 2026.
+        2. ANTI-REPETITION: Do not repeat concepts. Randomization Seed: ${dynamicSeed}.
+        3. Exclude these already generated questions to avoid duplication: ${Array.from(uniqueQuestionsTracker).slice(-5).join(" | ")}
+        
+        Return strictly as a JSON array.
+      `;
+
+      // गूगल आई स्टूडियो एपीआई कॉल
+      const rawAIResponse = await callGeminiAPIProxy(prompt); 
+      const parsedBatch = cleanAIResponse(rawAIResponse);
+
+      // ✅ यदि डेटा सही सलामत मिलता है, तो उसे लिस्ट में डालें
+      if (parsedBatch && Array.isArray(parsedBatch) && parsedBatch.length > 0) {
+        for (const q of parsedBatch) {
+          const simplifiedText = q.question.trim().toLowerCase();
+          if (!uniqueQuestionsTracker.has(simplifiedText) && questions.length < requestedCount) {
+            uniqueQuestionsTracker.add(simplifiedText);
+            questions.push(q);
+          }
+        }
+      } else {
+        // 🔥 पुराना 'break' हटा दिया गया है! 
+        // यदि इस अटेम्पट में डेटा नहीं मिला, तो ऐप लूप को तोड़ेगा नहीं, बल्कि अगले अटेम्पट का इंतज़ार करेगा।
+        console.warn(`अटेम्पट ${attempts}: जेमिनी से रिस्पॉन्स खाली रहा। दोबारा प्रयास किया जा रहा है...`);
+      }
+
+      // 🛑 समाधान: दो रिक्वेस्ट के बीच 2.5 सेकंड का गैप ताकि गूगल का सर्वर 429 ब्लॉक न करे
+      if (questions.length < requestedCount) {
+        const delayTime = 2500 + (attempts * 500); // हर असफल प्रयास के बाद थोड़ा और समय बढ़ाएं
+        await new Promise(resolve => setTimeout(resolve, delayTime));
+      }
+
+    } catch (error: any) {
+      console.error("API Error encountered on attempt " + attempts + ":", error);
+      
+      // यदि विशेष रूप से 429 (Rate Limit) एरर आता है, तो लूप बंद करने के बजाय थोड़ा ज़्यादा आराम दें
+      if (error?.status === 429 || error?.message?.includes("429")) {
+        console.log("रेट लिमिट लागू हुई। 5 सेकंड का लंबा ब्रेक लिया जा रहा है...");
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        continue; // अगले अटेम्पट पर जाएँ, लूप को नष्ट न करें
+      }
+      
+      // अन्य गंभीर एरर होने पर ही बाहर आएं
+      break; 
+    }
+  }
+
+  // यदि पूरे प्रयास के बाद भी 1-2 प्रश्न कम रह जाएँ, तो सुरक्षा के लिए एम्प्टी एरे क्रैश होने से बचाएगा
+  return questions;
 }
+
