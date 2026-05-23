@@ -263,6 +263,117 @@ export default function App() {
     mode: QuizMode;
   } | null>(null);
 
+  const [expandedMistakeId, setExpandedMistakeId] = useState<string | null>(null);
+
+  const [aiTrackerState, setAiTrackerState] = useState<{
+    weakTopics: string[];
+    weakPatterns: string[];
+    weakSubjects: string[];
+    mistakeHistory: { id: string; question: string; subject: string; topic?: string; date: string; explanation?: string; options?: any; correctAnswer?: string }[];
+  }>(() => {
+    const saved = localStorage.getItem('rpsc_ai_tracker');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return {
+      weakTopics: ['Mewar Dynasty Rulers', 'Rajasthan Lake Hydrography', 'Panchayati Raj Amendments'],
+      weakPatterns: ['Statement-based', 'Assertion & Reason'],
+      weakSubjects: ['Rajasthan GK', 'Indian GK'],
+      mistakeHistory: []
+    };
+  });
+
+  const updateBehaviorTracker = (questionsList: Question[], finalAnswers: (string | null)[]) => {
+    if (!questionsList || questionsList.length === 0) return;
+    
+    // Analyze answers
+    const newMistakeHistory = [...aiTrackerState.mistakeHistory];
+    const currentWeakTopics = [...aiTrackerState.weakTopics];
+    const currentWeakPatterns = [...aiTrackerState.weakPatterns];
+    const currentWeakSubjects = [...aiTrackerState.weakSubjects];
+
+    // Clear default fallbacks if user builds real history
+    const hadNoHistory = newMistakeHistory.length === 0;
+    const resolvedWeakTopics = hadNoHistory ? [] : currentWeakTopics;
+    const resolvedWeakPatterns = hadNoHistory ? [] : currentWeakPatterns;
+    const resolvedWeakSubjects = hadNoHistory ? [] : currentWeakSubjects;
+
+    questionsList.forEach((q, idx) => {
+      const ans = finalAnswers[idx];
+      const isCorrect = ans === q.correctAnswer;
+
+      if (!isCorrect && ans !== null && ans !== 'SKIPPED') {
+        const isDupe = newMistakeHistory.some(m => m.question === q.question);
+        if (!isDupe) {
+          newMistakeHistory.push({
+            id: q.id || `mistake-${Date.now()}-${idx}`,
+            question: q.question,
+            subject: config.subject,
+            topic: q.patternYear || '',
+            date: new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }),
+            explanation: q.explanation || '',
+            options: q.options,
+            correctAnswer: q.correctAnswer
+          });
+        }
+
+        const sub = config.subject;
+        if (sub && !resolvedWeakSubjects.includes(sub)) {
+          resolvedWeakSubjects.push(sub);
+        }
+
+        let topicGuessed = '';
+        const lowerQ = q.question.toLowerCase();
+        if (lowerQ.includes('महाराणा') || lowerQ.includes('कुम्भा') || lowerQ.includes('सांगा') || lowerQ.includes('मेवाड़')) {
+          topicGuessed = 'Mewar History & Maharana Dynasties';
+        } else if (lowerQ.includes('नदी') || lowerQ.includes('अपवाह') || lowerQ.includes('झील') || lowerQ.includes('चम्बल')) {
+          topicGuessed = 'Rajasthan River & Core Hydrography';
+        } else if (lowerQ.includes('संविधान') || lowerQ.includes('अनुच्छेद') || lowerQ.includes('राज्यपाल') || lowerQ.includes('विधानसभा')) {
+          topicGuessed = 'Polity Articles & Assembly Rules';
+        } else if (lowerQ.includes('अरावली') || lowerQ.includes('मरुस्थल') || lowerQ.includes('मिट्टी') || lowerQ.includes('भौतिक')) {
+          topicGuessed = 'Rajasthan Physical Geography';
+        } else if (lowerQ.includes('एकीकरण') || lowerQ.includes('मत्स्य संघ') || lowerQ.includes('सिरोही')) {
+          topicGuessed = 'Integration of Rajasthan States';
+        } else {
+          topicGuessed = `${sub} Core Weightage`;
+        }
+
+        if (topicGuessed && !resolvedWeakTopics.includes(topicGuessed)) {
+          resolvedWeakTopics.push(topicGuessed);
+        }
+
+        let patternGuessed = 'Standard MCQ';
+        if (q.question.includes('I.') || q.question.includes('कथन 1') || q.question.includes('Statement 1')) {
+          patternGuessed = 'Statement-based';
+        } else if (q.question.includes('कथन (A)') || q.question.includes('Assertion') || q.question.includes('कारण (R)') || q.question.includes('Reason')) {
+          patternGuessed = 'Assertion & Reason';
+        } else if (q.question.includes('सूची') || q.question.includes('Match') || q.question.includes('स्तम्भ')) {
+          patternGuessed = 'Match the Column';
+        } else if (q.question.includes('कालानुक्रमिक') || q.question.includes('Chronology') || q.question.includes('क्रम')) {
+          patternGuessed = 'Chronological Sorting';
+        }
+
+        if (patternGuessed && !resolvedWeakPatterns.includes(patternGuessed)) {
+          resolvedWeakPatterns.push(patternGuessed);
+        }
+      }
+    });
+
+    const updatedTracker = {
+      weakTopics: Array.from(new Set(resolvedWeakTopics)).slice(0, 8),
+      weakPatterns: Array.from(new Set(resolvedWeakPatterns)).slice(0, 4),
+      weakSubjects: Array.from(new Set(resolvedWeakSubjects)).slice(0, 5),
+      mistakeHistory: newMistakeHistory.slice(-25)
+    };
+
+    setAiTrackerState(updatedTracker);
+    localStorage.setItem('rpsc_ai_tracker', JSON.stringify(updatedTracker));
+  };
+
   useEffect(() => {
     const clockTimer = setInterval(() => {
       setSystime(new Date());
@@ -484,6 +595,7 @@ export default function App() {
     if (screen === 'RESULTS' && questions.length > 0) {
       const finalScore = getScore();
       updateGamification(finalScore, questions.length);
+      updateBehaviorTracker(questions, userAnswers);
 
       // Save to history list
       const historyItem: QuizHistoryItem = {
@@ -545,7 +657,17 @@ export default function App() {
     setLoading(true);
     setQuizError(null);
     try {
-      const generatedQuestions = await generateQuizQuestions(config);
+      // Fetch latest AI behavior tracker status
+      const savedTracker = localStorage.getItem('rpsc_ai_tracker');
+      let parsedTracker = null;
+      if (savedTracker) {
+        try { parsedTracker = JSON.parse(savedTracker); } catch (e) {}
+      }
+
+      const generatedQuestions = await generateQuizQuestions({
+        ...config,
+        aiTrackerState: parsedTracker
+      });
       if (!generatedQuestions || generatedQuestions.length === 0) {
         throw new Error("No questions retrieved");
       }
@@ -1456,6 +1578,228 @@ export default function App() {
                       Complete Now
                     </button>
                   </div>
+                </div>
+
+
+                {/* ADAPTIVE AI COACHING ENGINE & DIAGNOSTICS */}
+                <div id="ai-coaching-portal" className="bg-white border border-slate-200 rounded-[2.2rem] p-5 sm:p-6 shadow-[0_10px_35px_rgba(0,0,0,0.03)] relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full blur-2xl"></div>
+                  
+                  {/* Title Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 border-b border-slate-100 pb-4">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-2xl bg-purple-100 flex items-center justify-center text-purple-600">
+                        <BrainCircuit size={20} className="animate-pulse" />
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-[#a855f7] leading-none">Diagnostic Center</span>
+                        <h4 className="text-base font-black tracking-tight text-slate-800 mt-0.5">Adaptive AI Coaching Gurukul</h4>
+                      </div>
+                    </div>
+                    <span className="self-start sm:self-center px-2.5 py-1 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 text-[#a855f7] rounded-full text-[9px] font-black uppercase tracking-wider">
+                      ★ Active Behavioral Profiling
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mb-5">
+                    {/* Left: Score Gauge */}
+                    <div className="md:col-span-4 bg-slate-50 border border-slate-150 rounded-2xl p-4 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Prep Readiness Score</p>
+                      
+                      {(() => {
+                        const totalMistakes = aiTrackerState.mistakeHistory.length;
+                        const scoreIndex = Math.max(30, Math.min(98, 100 - totalMistakes * 3));
+                        return (
+                          <>
+                            <div className="relative w-24 h-24 mb-2 flex items-center justify-center">
+                              <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+                                <path
+                                  className="text-slate-200"
+                                  strokeWidth="3.5"
+                                  stroke="currentColor"
+                                  fill="none"
+                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                />
+                                <path
+                                  className="text-purple-600 drop-shadow-[0_2px_8px_rgba(147,51,234,0.3)]"
+                                  strokeWidth="3.5"
+                                  strokeDasharray={`${scoreIndex}, 100`}
+                                  strokeLinecap="round"
+                                  stroke="currentColor"
+                                  fill="none"
+                                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                                />
+                              </svg>
+                              <div className="absolute inset-0 flex flex-col items-center justify-center mt-1">
+                                <span className="text-2xl font-black text-slate-800 tracking-tighter leading-none">{scoreIndex}%</span>
+                                <span className="text-[7.5px] font-bold text-slate-400 uppercase mt-0.5 tracking-wider">Target Rank</span>
+                              </div>
+                            </div>
+                            <span className="text-[9px] font-black text-purple-700 bg-purple-50 px-2.5 py-1 rounded-full uppercase tracking-wider">
+                              {scoreIndex > 85 ? "Exam Ready (Excellent)" : scoreIndex > 70 ? "Competent Prep" : "Needs Coaching Boost"}
+                            </span>
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Right: Weakness Profiler Tags */}
+                    <div className="md:col-span-8 space-y-3.5 flex flex-col justify-between">
+                      <div>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">AI-Identified Soft Topics (Weaker Areas)</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {aiTrackerState.weakTopics.map((topic, i) => (
+                            <span key={topic + i} className="text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1 flex items-center gap-1 hover:bg-amber-100 transition-all select-none">
+                              ⚠️ {topic}
+                            </span>
+                          ))}
+                          {aiTrackerState.weakTopics.length === 0 && (
+                            <span className="text-[10px] text-slate-400 italic">No soft subjects detected yet. Keep practicing to build active profile.</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Tricky Exam Formats (Higher Distractors)</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {aiTrackerState.weakPatterns.map((pt, i) => (
+                            <span key={pt + i} className="text-[10px] font-black text-indigo-700 bg-indigo-50 border border-indigo-150 rounded-lg px-2.5 py-1 tracking-tight select-none">
+                              ✦ {pt} MCQs
+                            </span>
+                          ))}
+                          {aiTrackerState.weakPatterns.length === 0 && (
+                            <span className="text-[10px] text-slate-400 italic font-medium">Analytical patterns under assessment.</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1.5">Weak Subjects Profile</span>
+                        <div className="flex flex-wrap gap-1">
+                          {aiTrackerState.weakSubjects.map((sub, i) => (
+                            <span key={sub + i} className="text-[9px] font-extrabold text-[#52525b] bg-[#f4f4f5] rounded px-1.5 py-0.5 font-mono select-none">
+                              {sub.toUpperCase()}
+                            </span>
+                          ))}
+                          {aiTrackerState.weakSubjects.length === 0 && (
+                            <span className="text-[9px] text-[#71717a] italic">Subjects diagnostic initializing.</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Adaptive Revision Controls */}
+                  <div className="bg-gradient-to-r from-purple-900 to-[#5a38bf] rounded-2xl p-4 text-white flex flex-col sm:flex-row items-center justify-between gap-4 border border-purple-500/20 relative overflow-hidden group">
+                    <div className="text-center sm:text-left z-10">
+                      <p className="text-[11px] font-black text-amber-300 uppercase tracking-wider">★ Dynamic Remediation Active</p>
+                      <h5 className="text-sm font-black tracking-tight text-white mt-1">Automatic AI Personalized Exam Generation</h5>
+                      <p className="text-[10px] text-purple-100 italic mt-0.5">Varying statement-type & assertion-reason questions strictly from your weakest areas.</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        feedback('royal');
+                        const biasTopic = aiTrackerState.weakTopics[0] || 'Mixed Revision';
+                        const biasSub = (aiTrackerState.weakSubjects[0] as Subject) || 'Rajasthan GK';
+                        setConfig({
+                          subject: biasSub,
+                          difficulty: 'Hard',
+                          language: 'Bilingual',
+                          questionCount: 10,
+                          pattern: '2021-Present',
+                          mode: 'instant',
+                          topic: `${biasTopic} Remediation`
+                        });
+                        setScreen('SETUP');
+                      }}
+                      className="px-5 py-2.5 bg-white text-purple-700 hover:bg-purple-50 transition-all font-black text-[10px] uppercase tracking-wider rounded-xl shadow-md cursor-pointer select-none active:scale-95 shrink-0"
+                    >
+                      Launch Adaptive Drill
+                    </button>
+                  </div>
+
+                  {/* Mistake History List Accordion */}
+                  {aiTrackerState.mistakeHistory.length > 0 && (
+                    <div className="mt-5 border-t border-slate-100 pt-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-sans">Behavioral Log: Recent Mistakes ({aiTrackerState.mistakeHistory.length})</span>
+                        <button 
+                          onClick={() => {
+                            if (window.confirm("Do you want to clear your AI weakness profile data to start fresh?")) {
+                              const cleared = { weakTopics: [], weakPatterns: [], weakSubjects: [], mistakeHistory: [] };
+                              setAiTrackerState(cleared);
+                              localStorage.setItem('rpsc_ai_tracker', JSON.stringify(cleared));
+                              feedback('success');
+                            }
+                          }}
+                          className="text-[9px] font-bold text-rose-500 hover:underline hover:text-rose-700 uppercase"
+                        >
+                          Clear Analysis
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
+                        {aiTrackerState.mistakeHistory.map((mistake, idx) => {
+                          const isExpanded = expandedMistakeId === mistake.id;
+                          return (
+                            <div key={mistake.id || idx} className="bg-slate-50 border border-slate-150 rounded-xl overflow-hidden transition-all">
+                              <button
+                                onClick={() => {
+                                  feedback('click');
+                                  setExpandedMistakeId(isExpanded ? null : mistake.id);
+                                }}
+                                className="w-full p-3.5 text-left flex items-center justify-between gap-3 hover:bg-slate-100/50 transition-colors"
+                              >
+                                <div className="flex-1 flex flex-col text-left">
+                                  <span className="text-[8px] font-extrabold text-purple-600 uppercase font-mono tracking-widest">{mistake.subject} • Failed on {mistake.date}</span>
+                                  <p className="text-xs font-black text-slate-800 leading-tight mt-1 line-clamp-1">{mistake.question}</p>
+                                </div>
+                                <span className="text-slate-400 shrink-0 select-none">
+                                  {isExpanded ? "▲" : "▼"}
+                                </span>
+                              </button>
+
+                              {isExpanded && (
+                                <div className="p-4 bg-white border-t border-slate-150 space-y-3">
+                                  <p className="text-xs text-slate-800 font-bold whitespace-normal leading-relaxed">{mistake.question}</p>
+                                  
+                                  {mistake.options && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                      {Object.entries(mistake.options).map(([key, val]) => {
+                                        const isCorrectOpt = key === mistake.correctAnswer;
+                                        return (
+                                          <div 
+                                            key={key} 
+                                            className={`p-2 rounded-xl text-left text-xs font-bold font-sans flex items-center gap-2 border ${
+                                              isCorrectOpt 
+                                                ? 'bg-emerald-50 border-emerald-250 text-emerald-850' 
+                                                : 'bg-slate-50 border-slate-200 text-slate-600'
+                                            }`}
+                                          >
+                                            <span className={`w-5 h-5 rounded-lg flex items-center justify-center text-[10px] font-extrabold shrink-0 border ${
+                                              isCorrectOpt ? 'bg-emerald-250 border-emerald-300 text-emerald-950' : 'bg-slate-200 border-slate-300'
+                                            }`}>
+                                              {key}
+                                            </span>
+                                            <span className="leading-tight">{val as string}</span>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  <div className="p-3 bg-purple-50 rounded-xl border border-purple-150 mt-3">
+                                    <p className="text-[9px] font-black text-purple-900 uppercase tracking-widest mb-1 font-sans">Guruji Solution & Insight</p>
+                                    <p className="text-xs sm:text-[13px] text-purple-950 font-bold whitespace-normal leading-relaxed">{mistake.explanation}</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
 

@@ -253,7 +253,7 @@ async function startServer() {
     if (!config) {
       return res.status(400).json({ error: "Missing config parameters" });
     }
-    const { subject, difficulty, language, questionCount, topic, pattern, mode } = config;
+    const { subject, difficulty, language, questionCount, topic, pattern, mode, aiTrackerState } = config;
 
     const count = questionCount || 5;
 
@@ -276,7 +276,29 @@ async function startServer() {
 
       const selectedStyle = examStyles[Math.floor(Math.random() * examStyles.length)];
       
+      let adaptiveInstructions = "";
+      if (aiTrackerState) {
+        const { weakTopics, weakPatterns, weakSubjects, mistakeHistory } = aiTrackerState;
+        if ((weakTopics && weakTopics.length > 0) || (weakPatterns && weakPatterns.length > 0) || (weakSubjects && weakSubjects.length > 0)) {
+          adaptiveInstructions = `
+====================================================
+ADAPTIVE COACHING TRIGGER - WEAKNESS REMEDIATION
+====================================================
+The candidate's live behavior tracking database indicates the following critical weak areas:
+- Weak Topics/Concepts: ${JSON.stringify(weakTopics || [])}
+- Weak Cognitive Exam Patterns: ${JSON.stringify(weakPatterns || [])}
+- Weak Subjects: ${JSON.stringify(weakSubjects || [])}
+- Sample of recently failed/skipped questions to remediate: ${JSON.stringify((mistakeHistory || []).slice(-4).map((m: any) => m.question))}
+
+You MUST bias approximately 50-60% of this quiz to cover these exact weak topics or similar difficult concepts to help them practice and master their weaknesses!
+You MUST format at least 40% of the questions using their weak cognitive exam patterns (e.g., Assertion & Reason, Statement-based, or Chronology) to train their analytical skills.
+Vary the remaining questions to keep the exam comprehensive. Make everything highly high-yield.
+`;
+        }
+      }
+
       let prompt = `
+${adaptiveInstructions}
 You are an advanced AI Quiz Engine for competitive exams like RPSC, REET, RAS, UPSC, SSC, CET, Banking, Railway, and State Exams.
 
 YOUR TASK:

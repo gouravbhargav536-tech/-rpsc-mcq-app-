@@ -65,6 +65,7 @@ export interface QuizConfig {
   pattern: ExamPattern;
   mode: QuizMode;
   topic?: string;
+  aiTrackerState?: any;
 }
 
 export interface QuizResult {
