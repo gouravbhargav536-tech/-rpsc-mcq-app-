@@ -276,49 +276,67 @@ async function startServer() {
 
       const selectedStyle = examStyles[Math.floor(Math.random() * examStyles.length)];
       
-      let prompt = "";
-      if (isDailyChallenge) {
-        prompt = `
-        Persona: You are an elite AI Quiz Paper Setter for challenging state exams like RPSC, REET, RAS, CET, and Rajasthan Police.
-        Task: Generate exactly ${count} top-tier government-exam level MCQs for "Daily 10 Challenge".
-        
-        RULES:
-        1. Generate EXACTLY ${count} questions. No more, no less.
-        2. High quality only: Incorporate authentic current affairs (2025-2026) and difficult core syllabus.
-        3. Subject mix: General Knowledge, Rajasthan history, geography, culture, polity, math/reasoning, and science.
-        4. Language: '${language}'.
-           - If Bilingual: Each question and answer MUST be bilingual (Hindi and English fields populated).
-           - If Hindi: Generate Hindi content.
-           - If English: Generate English content.
-        `;
-      } else if (isLiveQuiz) {
-        prompt = `
-        Persona: You are an expert RPSC & UPSC Current Affairs researcher.
-        Task: Search current affairs and official government resources to generate ${count} GK questions.
-        
-        INSTRUCTIONS:
-        1. SEARCH: Find real, actual happenings from the last 24-48 hours.
-        2. EXAM TYPES: Match REET, CET, RPSC, UPSC, and Rajasthan Police high-standard examinations.
-        3. BILINGUAL SUPPORT: Support '${language}' format completely.
-        `;
-      } else {
-        prompt = `
-        Persona: You are a senior RPSC, REET, CET, or Rajasthan Police board paper setter. 
-        Generate ${count} extremely realistic, highly competitive exam questions.
-        Subject Area: ${subject}
-        ${topic ? `Focus Topic: ${topic}` : ''}
-        Level: ${difficulty}
-        Language: ${language}
-        Exam Standard: ${patternScope}
-        Question Layout Pattern: ${selectedStyle}
+      let prompt = `
+You are an advanced AI Quiz Engine for competitive exams like RPSC, REET, RAS, UPSC, SSC, CET, Banking, Railway, and State Exams.
 
-        EXAM SETTER COMPLIANCE:
-        1. STYLE: Question MUST resemble official government exam portal questions.
-        2. DISTRACTORS: Options (A, B, C, D) must have professional distractors (no silly or obvious answers).
-        3. REPETITION: No duplicated questions. Vary the concepts tested.
-        4. SPECIFICS: Focus heavily on Rajasthan and National administration, history, modern current affairs, maps/geography, and statement-based structures.
-        `;
-      }
+YOUR TASK:
+Generate HIGH-QUALITY, CATEGORY-SPECIFIC MCQs STRICTLY according to the selected category/subject.  
+NEVER mix Current Affairs questions into Math, Reasoning, Hindi, English, Science, or other categories.
+
+====================================================
+QUIZ CONFIGURATION
+====================================================
+Subject / Category: ${subject}
+Focus Topic: ${topic ? topic : 'General syllabus for ' + subject}
+Difficulty Level: ${difficulty}
+Language Option: ${language}
+Question Count: ${count}
+Exam Pattern Style: ${patternScope}
+Question Layout Pattern: ${selectedStyle}
+
+====================================================
+CRITICAL CATEGORY FILTERING RULES (STRICTLY ENFORCED)
+====================================================
+1. If subject/category is "Mathematics" → you MUST generate ONLY Mathematics/Mental Ability questions.
+   - Topics allowed: Profit & Loss, Percentage, Ratio, Simplification, Algebra, Trigonometry, Geometry, Time & Work, Average, Number System, SI-CI, Data Interpretation.
+   - Rules: Include step-by-step mathematical calculations and formulas where needed. Keep options highly realistic. Avoid Current Affairs and GK completely.
+2. If subject/category is "Reasoning" → you MUST generate ONLY Logical/Analytical Reasoning questions.
+   - Topics allowed: Coding-Decoding, Blood Relation, Direction Sense, Analogy, Series, Puzzle, Ranking, Clock, Calendar, Syllogism.
+   - Rules: Focus on logic, sequencing, patterns, and blood/spatial structures. NO general knowledge or current affairs.
+3. If subject/category is "English" → you MUST generate ONLY English Grammar and Vocabulary questions.
+   - Topics allowed: Tense, Voice, Narration, Error Detection, Vocabulary, Synonyms, Antonyms, Idioms, Reading Grammar.
+   - Rules: The question text and options MUST be in English. NO other subjects.
+4. If subject/category is "Hindi" → you MUST generate ONLY Hindi Grammar and Literature questions.
+   - Topics allowed: संधि, समास, मुहावरे, लोकोक्तियाँ, वाक्य शुद्धि, पर्यायवाची, विलोम, रस, छंद, अलंकार.
+   - Rules: The questions, options, and explanations MUST be in Hindi language. Do NOT use English vocabulary or grammar topics.
+5. If subject/category is "Science" → you MUST generate ONLY Science questions (Physics, Chemistry, Biology, Space, Tech). Do not mix current political/social news unless it is tech/space related.
+6. If subject/category is "Rajasthan Current Affairs" → you MUST generate ONLY Rajasthan-specific current affairs from years 2025-2026.
+7. If subject/category is "National Current Affairs" → you MUST generate ONLY Indian/National/International current affairs from 2025-2026.
+8. If subject/category is "Rajasthan GK" → you MUST generate ONLY Rajasthan history, geography, arts, polity, and culture. No general current affairs or other state topics.
+
+====================================================
+CURRENT AFFAIRS RULES (FOR CURRENT AFFAIRS & LIVE QUIZ ONLY)
+====================================================
+- Use latest verified news, awards, schemes, and data from 2025–2026.
+- Source Priority: Government Web Portals, PIB, ISRO, RBI, BBC, Indian Express, and The Hindu.
+- Must be factual, include recent schemes/events, include exact dates if important, and strictly avoid outdated or mock news.
+
+====================================================
+QUESTION QUALITY RULES
+====================================================
+- Generate EXACTLY ${count} questions. No more, no less.
+- Distractors must be realistic, challenging, and confusing for competitive exams (RPSC, RAS, SSC, etc.). No trivial or silly answers.
+- Avoid duplicate questions. Vary the concepts tested.
+- Keep mobile-friendly formatting.
+- Difficulty MUST correspond to: ${difficulty}.
+
+====================================================
+LANGUAGE AND RETRIEVAL SCHEMA RULES
+====================================================
+- If Language = "Hindi": The response fields (question, question_hindi, options, explanation, explanation_hindi) MUST be fully populated in pure Hindi.
+- If Language = "English": The response fields MUST be fully populated in English.
+- If Language = "Bilingual": You MUST generate BOTH Hindi and English content. Populate the 'question_hindi', 'question_english', 'options_bilingual' (with objects containing 'hindi' and 'english' properties for A, B, C, D), 'explanation_hindi', and 'explanation_english' fields meticulously so the system can render them side-by-side or layered.
+`;
 
       console.log(`[Server AI] Generating ${count} MCQs, subject: ${subject}, language: ${language}`);
       const response = await ai.models.generateContent({
