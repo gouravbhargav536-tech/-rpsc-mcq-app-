@@ -191,6 +191,16 @@ export interface QuizHistoryItem {
   topic?: string;
 }
 
+const safeJsonParse = (val: string | null, fallback: any = null) => {
+  if (!val || val === 'undefined' || val === 'null') return fallback;
+  try {
+    return JSON.parse(val);
+  } catch (e) {
+    console.error("Failed to parse JSON safely:", val, e);
+    return fallback;
+  }
+};
+
 const cleanTextKey = (text: string) => {
   if (!text) return "";
   return text.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]/g, "").trim();
@@ -272,13 +282,8 @@ export default function App() {
     mistakeHistory: { id: string; question: string; subject: string; topic?: string; date: string; explanation?: string; options?: any; correctAnswer?: string }[];
   }>(() => {
     const saved = localStorage.getItem('rpsc_ai_tracker');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error(e);
-      }
-    }
+    const parsed = safeJsonParse(saved, null);
+    if (parsed) return parsed;
     return {
       weakTopics: ['Mewar Dynasty Rulers', 'Rajasthan Lake Hydrography', 'Panchayati Raj Amendments'],
       weakPatterns: ['Statement-based', 'Assertion & Reason'],
@@ -396,32 +401,23 @@ export default function App() {
   // Persist user and progress
   useEffect(() => {
     const savedUser = localStorage.getItem('rpsc_user');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-        setScreen('HOME');
-      } catch (e) {
-        console.error("Failed to parse saved user", e);
-      }
+    const parsedUser = safeJsonParse(savedUser, null);
+    if (parsedUser) {
+      setUser(parsedUser);
+      setScreen('HOME');
     }
   }, []);
 
   useEffect(() => {
     const savedHistory = localStorage.getItem('rpsc-quiz-history');
-    if (savedHistory) {
-      try {
-        setQuizHistory(JSON.parse(savedHistory));
-      } catch (e) {
-        console.error("Failed to load history", e);
-      }
+    const parsedHistory = safeJsonParse(savedHistory, null);
+    if (parsedHistory) {
+      setQuizHistory(parsedHistory);
     }
     const savedNotes = localStorage.getItem('rpsc-quick-notes');
-    if (savedNotes) {
-      try {
-        setQuickNotes(JSON.parse(savedNotes));
-      } catch (e) {
-        console.error("Failed to load quick notes", e);
-      }
+    const parsedNotes = safeJsonParse(savedNotes, null);
+    if (parsedNotes) {
+      setQuickNotes(parsedNotes);
     }
   }, []);
 
@@ -456,8 +452,8 @@ export default function App() {
   // Restore progress
   const restoreQuiz = () => {
     const saved = localStorage.getItem('rpsc_current_quiz');
-    if (saved) {
-      const data = JSON.parse(saved);
+    const data = safeJsonParse(saved, null);
+    if (data) {
       setConfig(data.config);
       setQuestions(data.questions);
       setUserAnswers(data.userAnswers);
@@ -537,8 +533,8 @@ export default function App() {
 
   useEffect(() => {
     const savedStats = localStorage.getItem('rpsc-gamification');
-    if (savedStats) {
-      const stats = JSON.parse(savedStats);
+    const stats = safeJsonParse(savedStats, null);
+    if (stats) {
       setStreak(stats.streak || 0);
       setXp(stats.xp || 0);
       setBadges(stats.badges || []);
@@ -552,7 +548,7 @@ export default function App() {
 
   const updateGamification = (newScore: number, total: number) => {
     const statsStr = localStorage.getItem('rpsc-gamification');
-    let stats = statsStr ? JSON.parse(statsStr) : { streak: 0, xp: 0, badges: [], lastDailyDate: '', quizCount: 0 };
+    let stats = safeJsonParse(statsStr, null) || { streak: 0, xp: 0, badges: [], lastDailyDate: '', quizCount: 0 };
     
     // Update Streak
     const today = new Date().toDateString();
@@ -659,10 +655,7 @@ export default function App() {
     try {
       // Fetch latest AI behavior tracker status
       const savedTracker = localStorage.getItem('rpsc_ai_tracker');
-      let parsedTracker = null;
-      if (savedTracker) {
-        try { parsedTracker = JSON.parse(savedTracker); } catch (e) {}
-      }
+      const parsedTracker = safeJsonParse(savedTracker, null);
 
       const generatedQuestions = await generateQuizQuestions({
         ...config,

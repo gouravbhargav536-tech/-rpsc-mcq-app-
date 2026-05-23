@@ -24,6 +24,13 @@ export const mockAuth = {
   },
   getCurrentUser: (): User | null => {
     const userStr = localStorage.getItem('user');
-    return userStr ? JSON.parse(userStr) : null;
+    if (userStr && userStr !== 'undefined' && userStr !== 'null') {
+      try {
+        return JSON.parse(userStr);
+      } catch (e) {
+        console.error("Failed to parse user session", e);
+      }
+    }
+    return null;
   }
 };

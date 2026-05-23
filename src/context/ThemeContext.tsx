@@ -8,12 +8,26 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentTheme, setCurrentThemeState] = useState<AppTheme>(() => {
     const saved = localStorage.getItem('app_theme');
-    return saved ? JSON.parse(saved) : THEME_PRESETS[0];
+    if (saved && saved !== 'undefined' && saved !== 'null') {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse app theme preferences", e);
+      }
+    }
+    return THEME_PRESETS[0];
   });
 
   const [currentFont, setCurrentFontState] = useState<FontPreference>(() => {
     const saved = localStorage.getItem('app_font');
-    return saved ? JSON.parse(saved) : { family: 'Inter', size: 'medium', weight: 'normal' };
+    if (saved && saved !== 'undefined' && saved !== 'null') {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Failed to parse app font preferences", e);
+      }
+    }
+    return { family: 'Inter', size: 'medium', weight: 'normal' };
   });
 
   const [isMotivationMode, setMotivationMode] = useState(false);

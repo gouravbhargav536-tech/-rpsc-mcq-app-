@@ -37,12 +37,16 @@ const generateMockVideos = (category: VideoCategory): YTVideo[] => {
 export const fetchVideos = async (category: VideoCategory): Promise<YTVideo[]> => {
   // Check local cache first (firebase logic can be added here)
   const cachedStr = localStorage.getItem(`${YT_CACHE_KEY}_${category}`);
-  if (cachedStr) {
-    const cached: CachedData = JSON.parse(cachedStr);
-    const now = Date.now();
-    // Cache valid for 6 hours
-    if (now - cached.timestamp < 6 * 60 * 60 * 1000) {
-      return cached.data;
+  if (cachedStr && cachedStr !== 'undefined' && cachedStr !== 'null') {
+    try {
+      const cached: CachedData = JSON.parse(cachedStr);
+      const now = Date.now();
+      // Cache valid for 6 hours
+      if (now - cached.timestamp < 6 * 60 * 60 * 1000) {
+        return cached.data;
+      }
+    } catch (e) {
+      console.error("Failed to parse video cache", e);
     }
   }
 
