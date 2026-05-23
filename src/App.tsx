@@ -40,6 +40,7 @@ import {
   User as UserIcon,
   Menu,
   Play,
+  Pause,
   Youtube,
   Clock,
   Target,
@@ -227,6 +228,7 @@ export default function App() {
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [consecutiveCorrect, setConsecutiveCorrect] = useState(0);
   const [quizTimer, setQuizTimer] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
   const [isAnswered, setIsAnswered] = useState(false);
   const [questionExpanded, setQuestionExpanded] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -353,6 +355,7 @@ export default function App() {
       setIsAnswered(data.isAnswered);
       setIsReviewMode(data.isReviewMode);
       setIsDailyChallenge(data.isDailyChallenge);
+      setIsPaused(false);
       setScreen('QUIZ');
       feedback('success');
     }
@@ -385,7 +388,7 @@ export default function App() {
   const [isRoyalTransition, setIsRoyalTransition] = useState(false);
 
   useEffect(() => {
-    if (screen === 'QUIZ' && !loading) {
+    if (screen === 'QUIZ' && !loading && !isPaused) {
       timerRef.current = setInterval(() => {
         setQuizTimer(prev => prev + 1);
       }, 1000);
@@ -395,7 +398,7 @@ export default function App() {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [screen, loading]);
+  }, [screen, loading, isPaused]);
 
   const startSetup = (subject: Subject) => {
     feedback('click');
@@ -417,6 +420,7 @@ export default function App() {
     setCurrentIndex(0);
     setIsReviewMode(true);
     setIsDailyChallenge(false);
+    setIsPaused(false);
     setScreen('QUIZ');
   };
 
@@ -550,6 +554,7 @@ export default function App() {
       setCurrentIndex(0);
       setQuizTimer(0);
       setIsAnswered(false);
+      setIsPaused(false);
       setScreen('QUIZ');
     } catch (error: any) {
       console.error("AI Studio Error Details:", error);
@@ -1011,10 +1016,12 @@ export default function App() {
                         return (
                           <motion.div 
                             key={i}
-                            whileHover={{ scale: 1.1, y: -2 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={() => setCurrentIndex(i)}
-                            className={`aspect-square rounded-xl border flex items-center justify-center text-[11px] font-black cursor-pointer transition-all duration-300 ${
+                            whileHover={!isPaused ? { scale: 1.1, y: -2 } : {}}
+                            whileTap={!isPaused ? { scale: 0.9 } : {}}
+                            onClick={() => !isPaused && setCurrentIndex(i)}
+                            className={`aspect-square rounded-xl border flex items-center justify-center text-[11px] font-black transition-all duration-300 ${
+                              isPaused ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'cursor-pointer'
+                            } ${
                               isCurrent 
                                 ? 'bg-gradient-to-r from-pink-500 to-orange-400 text-white shadow-[0_4px_15px_rgba(236,72,153,0.4)] border-transparent scale-110 z-10' 
                                 : isAnswered 
@@ -2470,12 +2477,31 @@ export default function App() {
                                           )}
                                        </div>
                                        
-                                       {/* Ticking computer-based test Digital Clock */}
-                                       <div className="bg-slate-800/90 border border-slate-700/50 px-3 py-1 rounded-xl flex items-center gap-1.5 shadow-inner min-w-[78px] justify-center select-none shrink-0">
-                                          <Clock size={11} className="text-[#3b82f6] animate-pulse" />
-                                          <span className="font-mono text-xs sm:text-sm font-black tracking-tight text-[#3b82f6]">
-                                             {formatTime(quizTimer)}
-                                          </span>
+                                       <div className="flex items-center gap-2 shrink-0">
+                                          {/* Ticking computer-based test Digital Clock */}
+                                          <div className="bg-slate-800/90 border border-slate-700/50 px-3 py-1.5 rounded-xl flex items-center gap-1.5 shadow-inner select-none shrink-0">
+                                             <Clock size={11} className={isPaused ? 'text-slate-400' : 'text-[#3b82f6] animate-pulse'} />
+                                             <span className={`font-mono text-xs sm:text-sm font-black tracking-tight ${isPaused ? 'text-slate-400' : 'text-[#3b82f6]'}`}>
+                                                {formatTime(quizTimer)}
+                                             </span>
+                                          </div>
+                                          
+                                          {/* Pause/Resume button */}
+                                          <button
+                                             id="quiz-pause-control-btn"
+                                             onClick={() => {
+                                                feedback('click');
+                                                setIsPaused(prev => !prev);
+                                             }}
+                                             className={`px-3 py-1.5 rounded-xl border flex items-center gap-1.5 shadow-md transition-all text-xs font-black uppercase tracking-wider outline-none active:scale-95 ${
+                                                isPaused
+                                                   ? 'bg-emerald-600 hover:bg-emerald-700 border-emerald-500 text-white'
+                                                   : 'bg-slate-800 hover:bg-slate-700 border-slate-700/60 text-slate-300'
+                                             }`}
+                                          >
+                                             {isPaused ? <Play size={10} className="fill-white text-white" /> : <Pause size={10} className="text-amber-400 fill-amber-400/20" />}
+                                             <span>{isPaused ? 'Resume' : 'Pause'}</span>
+                                          </button>
                                        </div>
                                     </div>
 
@@ -2505,9 +2531,52 @@ export default function App() {
                                     </div>
                                  </div>
                               </div>
-                                 
+
+                              <div className="relative mt-2 rounded-2xl overflow-hidden p-0.5">
+                                 {/* Pause Blur Overlay */}
                                  <AnimatePresence>
-                                    {isAnswered && config.mode === 'instant' && (
+                                   {isPaused && (
+                                     <motion.div
+                                       initial={{ opacity: 0 }}
+                                       animate={{ opacity: 1 }}
+                                       exit={{ opacity: 0 }}
+                                       className="absolute inset-x-0 top-0 bottom-0 bg-slate-100/30 backdrop-blur-md rounded-2xl z-45 flex flex-col items-center justify-start pt-16 px-4 select-none"
+                                     >
+                                       <motion.div
+                                         initial={{ scale: 0.9, opacity: 0 }}
+                                         animate={{ scale: 1, opacity: 1 }}
+                                         transition={{ type: "spring", damping: 15 }}
+                                         className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-2xl max-w-sm w-full flex flex-col items-center gap-5"
+                                       >
+                                         <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center border border-amber-500/25">
+                                           <Pause size={28} className="text-amber-500 fill-amber-500/20 animate-pulse" />
+                                         </div>
+                                         <div className="flex flex-col gap-1.5 text-center">
+                                           <h3 className="font-sans font-black text-slate-900 text-lg tracking-tight leading-none">Exam Session Paused</h3>
+                                           <p className="text-xs text-slate-500 font-semibold leading-relaxed">
+                                             The ticking session timer has been safely stopped. Visual content is fully masked to protect preparation integrity.
+                                           </p>
+                                         </div>
+                                         <button
+                                           id="quiz-resume-overlay-btn"
+                                           onClick={(e) => {
+                                             e.stopPropagation();
+                                             feedback('click');
+                                             setIsPaused(false);
+                                           }}
+                                           className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-750 hover:to-indigo-750 active:scale-95 text-white rounded-2xl shadow-lg shadow-blue-500/25 text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-blue-500 cursor-pointer"
+                                         >
+                                           <Play size={12} className="fill-white" />
+                                           <span>Resume Exam</span>
+                                         </button>
+                                       </motion.div>
+                                     </motion.div>
+                                   )}
+                                 </AnimatePresence>
+
+                                 <div className={isPaused ? 'blur-md pointer-events-none select-none transition-all duration-300' : 'transition-all duration-300'}>
+                                    <AnimatePresence>
+                                       {isAnswered && config.mode === 'instant' && (
                                       <motion.div 
                                         initial={{ scale: 0, x: 20 }}
                                         animate={{ scale: 1, x: 0 }}
@@ -2915,6 +2984,8 @@ export default function App() {
                                   />
                                 </div>
                               )}
+                                 </div>
+                              </div>
                             </div>
                           </div>
 
@@ -2923,9 +2994,12 @@ export default function App() {
                             <div className="max-w-2xl mx-auto w-full flex items-center justify-between gap-4">
                                <div className="flex items-center gap-3">
                                   <button 
-                                    onClick={reportQuestion}
+                                    onClick={isPaused ? undefined : reportQuestion}
+                                    disabled={isPaused}
                                     title="Report Issue"
-                                    className={`w-14 h-14 flex items-center justify-center rounded-2xl border transition-all active:scale-95 ${
+                                    className={`w-14 h-14 flex items-center justify-center rounded-2xl border transition-all ${
+                                      isPaused ? 'opacity-40 cursor-not-allowed pointer-events-none' : 'active:scale-95'
+                                    } ${
                                       reportedQuestions.includes(currentIndex) 
                                         ? 'bg-rose-500/10 border-rose-500/30 text-rose-500 shadow-lg shadow-rose-500/10' 
                                         : 'bg-page border-border text-muted hover:bg-surface shadow-sm'
@@ -2937,6 +3011,7 @@ export default function App() {
                                   <div className="hidden sm:flex flex-col">
                                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Time Left</span>
                                      <span className={`text-sm font-mono font-black ${
+                                       isPaused ? 'text-slate-400' :
                                        config.mode === 'exam' && ((questions.length * 60) - quizTimer) < 120 ? 'text-rose-500 animate-pulse' : 'text-slate-800'
                                      }`}>
                                        {config.mode === 'exam' 
@@ -2953,8 +3028,13 @@ export default function App() {
                                      initial={{ scale: 0.9, opacity: 0 }}
                                      animate={{ scale: 1, opacity: 1 }}
                                      exit={{ scale: 0.9, opacity: 0 }}
-                                     onClick={nextQuestion}
-                                     className="flex-1 max-w-[280px] h-14 md:h-16 bg-gradient-to-r from-primary to-indigo-600 text-white font-black rounded-2xl shadow-2xl shadow-primary/40 flex items-center justify-center gap-3 active:scale-95 transition-all text-sm uppercase tracking-[0.2em]"
+                                     onClick={isPaused ? undefined : nextQuestion}
+                                     disabled={isPaused}
+                                     className={`flex-1 max-w-[280px] h-14 md:h-16 text-white font-black rounded-2xl flex items-center justify-center gap-3 transition-all ${
+                                       isPaused 
+                                         ? 'bg-slate-300 text-slate-500 cursor-not-allowed pointer-events-none opacity-40 shadow-none' 
+                                         : 'bg-gradient-to-r from-primary to-indigo-600 active:scale-95 shadow-2xl shadow-primary/40'
+                                     } text-sm uppercase tracking-[0.2em]`}
                                    >
                                      {currentIndex === questions.length - 1 ? 'SUBMIT EXAM' : 'NEXT QUESTION'}
                                      <ChevronRight size={20} />
