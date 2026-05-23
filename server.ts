@@ -199,6 +199,54 @@ async function startServer() {
     });
   });
 
+  // Safe parser helper function to extract and parse JSON strictly and cleanly
+  const cleanAndParseJSON = (text: string): any => {
+    if (!text) return [];
+    let cleanText = text.trim();
+    
+    // Remove markdown code block markers if present
+    if (cleanText.startsWith("```")) {
+      cleanText = cleanText.replace(/^```(json)?/, "").replace(/```$/, "").trim();
+    }
+    
+    // Direct parse
+    try {
+      return JSON.parse(cleanText);
+    } catch (err) {
+      console.warn("[Server Safe Parser] Direct JSON parse failed, trying extraction...", err);
+    }
+    
+    // Try to extract content inside the first array brackets [...]
+    try {
+      const firstBracket = cleanText.indexOf("[");
+      const lastBracket = cleanText.lastIndexOf("]");
+      if (firstBracket !== -1 && lastBracket > firstBracket) {
+        const candidate = cleanText.substring(firstBracket, lastBracket + 1);
+        return JSON.parse(candidate);
+      }
+    } catch (err) {
+      console.warn("[Server Safe Parser] Bracket extraction failed:", err);
+    }
+
+    // Try to extract content inside the first object braces {...}
+    try {
+      const firstBrace = cleanText.indexOf("{");
+      const lastBrace = cleanText.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        const candidate = cleanText.substring(firstBrace, lastBrace + 1);
+        const parsedObj = JSON.parse(candidate);
+        if (Array.isArray(parsedObj)) return parsedObj;
+        if (parsedObj.questions && Array.isArray(parsedObj.questions)) return parsedObj.questions;
+        if (parsedObj.data && Array.isArray(parsedObj.data)) return parsedObj.data;
+        return [parsedObj];
+      }
+    } catch (err) {
+      console.error("[Server Safe Parser] Braces extraction failed:", err);
+    }
+    
+    return [];
+  };
+
   // API Route: Secure Server-side Quiz Questions Generator using recommended Gemini model with reliable schema
   app.post("/api/quiz/generate", async (req, res) => {
     const { config } = req.body;
@@ -207,14 +255,16 @@ async function startServer() {
     }
     const { subject, difficulty, language, questionCount, topic, pattern, mode } = config;
 
+    const count = questionCount || 5;
+
     try {
       const isCurrentAffairs = subject === 'Rajasthan Current Affairs' || subject === 'National Current Affairs' || subject === 'Daily Live Quiz';
       const isLiveQuiz = subject === 'Daily Live Quiz';
       const isDailyChallenge = mode === 'daily';
 
       const patternScope = pattern === '2012-2020' 
-        ? 'Old Pattern (2012–2020): Direct factual questions, simple recall-based.' 
-        : 'New Pattern (2021–2026): Statement-based, confusing options, analytical, modern exam style.';
+        ? 'Old Pattern (2012–2020): Direct factual questions, simple recall-based, traditional government tests.' 
+        : 'New Pattern (2021–2026): Complex statement-based MCQs, confusing high-degree distractors, analytical, modern CBT government exam portals style.';
 
       const examStyles = [
         "Standard MCQ: Direct, hard factual question with 4 complex but distinct options based on official government records.",
@@ -229,55 +279,54 @@ async function startServer() {
       let prompt = "";
       if (isDailyChallenge) {
         prompt = `
-        Persona: You are an advanced AI Quiz Engine for RPSC, REET, RAS, SSC, UPSC, and competitive exams.
-        TASK: Generate exactly ${questionCount || 10} high-quality MCQs for "Daily 10 Challenge" mode.
+        Persona: You are an elite AI Quiz Paper Setter for challenging state exams like RPSC, REET, RAS, CET, and Rajasthan Police.
+        Task: Generate exactly ${count} top-tier government-exam level MCQs for "Daily 10 Challenge".
         
-        CHALLENGE RULES:
-        1. Generate EXACTLY ${questionCount || 10} questions.
-        2. Difficulty Curve: Mix of Easy, Medium, and Hard.
-        3. Mix of subjects: Rajasthan GK, Indian GK, Current Affairs (2025-2026), Science, Math, History, Geography, Reasoning, English/Hindi Grammar.
-        4. Language Support: ${language}. 
-           - If language is 'Hindi', generate only Hindi fields.
-           - If language is 'English', generate only English fields.
-           - If language is 'Bilingual', generate BOTH Hindi and English fields.
+        RULES:
+        1. Generate EXACTLY ${count} questions. No more, no less.
+        2. High quality only: Incorporate authentic current affairs (2025-2026) and difficult core syllabus.
+        3. Subject mix: General Knowledge, Rajasthan history, geography, culture, polity, math/reasoning, and science.
+        4. Language: '${language}'.
+           - If Bilingual: Each question and answer MUST be bilingual (Hindi and English fields populated).
+           - If Hindi: Generate Hindi content.
+           - If English: Generate English content.
         `;
       } else if (isLiveQuiz) {
         prompt = `
-        Persona: You are a real-time Current Affairs analyst.
-        Task: Find recent news from official releases and trusted news.
-        Number of Questions to Generate: ${questionCount}
-        Requested Language: ${language}
+        Persona: You are an expert RPSC & UPSC Current Affairs researcher.
+        Task: Search current affairs and official government resources to generate ${count} GK questions.
         
         INSTRUCTIONS:
-        1. USE SEARCH: Find real news from the last 24-48 hours.
-        2. SOURCES: Prioritize official Indian govt releases and trusted news.
-        3. QUALITY: Ensure strict factual accuracy. Use high competitive difficulty.
+        1. SEARCH: Find real, actual happenings from the last 24-48 hours.
+        2. EXAM TYPES: Match REET, CET, RPSC, UPSC, and Rajasthan Police high-standard examinations.
+        3. BILINGUAL SUPPORT: Support '${language}' format completely.
         `;
       } else {
         prompt = `
-        Persona: You are an expert RPSC exam paper setter and AI tutor. 
-        Number of Questions to Generate: ${questionCount}
-        Subject: ${subject}
+        Persona: You are a senior RPSC, REET, CET, or Rajasthan Police board paper setter. 
+        Generate ${count} extremely realistic, highly competitive exam questions.
+        Subject Area: ${subject}
         ${topic ? `Focus Topic: ${topic}` : ''}
-        Difficulty: ${difficulty}
+        Level: ${difficulty}
         Language: ${language}
-        Pattern Strategy: ${patternScope}
-        Question Format focus: ${selectedStyle}
+        Exam Standard: ${patternScope}
+        Question Layout Pattern: ${selectedStyle}
 
-        EXAM SETTER RULES:
-        1. OPTIONS: Exactly 4 options (A, B, C, D).
-        2. DISTRACTORS: Use strong, realistic distractors.
-        3. LANGUAGE: Clear, formal, exam-oriented.
-        4. AVOID REPETITION: Focus on different aspects, concepts, and areas of the syllabus.
+        EXAM SETTER COMPLIANCE:
+        1. STYLE: Question MUST resemble official government exam portal questions.
+        2. DISTRACTORS: Options (A, B, C, D) must have professional distractors (no silly or obvious answers).
+        3. REPETITION: No duplicated questions. Vary the concepts tested.
+        4. SPECIFICS: Focus heavily on Rajasthan and National administration, history, modern current affairs, maps/geography, and statement-based structures.
         `;
       }
 
-      console.log(`[Server AI] Generating ${questionCount} MCQs for subject: ${subject}`);
+      console.log(`[Server AI] Generating ${count} MCQs, subject: ${subject}, language: ${language}`);
       const response = await ai.models.generateContent({
         model: "gemini-3.5-flash",
-        contents: prompt,
+        contents: prompt + `\n\nReturn EXACTLY ${count} items. Strictly follow the JSON schema array structure containing ${count} questions.`,
         config: {
           responseMimeType: "application/json",
+          maxOutputTokens: 8192, // Increase output token limit to prevent truncation
           responseSchema: {
             type: Type.ARRAY,
             items: {
@@ -321,7 +370,7 @@ async function startServer() {
                     }
                   }
                 },
-                correctAnswer: { type: Type.STRING },
+                correctAnswer: { type: Type.STRING, enum: ["A", "B", "C", "D"] },
                 explanation: { type: Type.STRING },
                 explanation_hindi: { type: Type.STRING },
                 explanation_english: { type: Type.STRING },
@@ -338,14 +387,26 @@ async function startServer() {
                 teacherInsight: { type: Type.STRING },
                 extraFacts: { type: Type.ARRAY, items: { type: Type.STRING } }
               },
-              required: ["question", "options", "correctAnswer"]
+              required: ["question", "options", "correctAnswer", "explanation"]
             }
           }
         }
       });
 
-      const rawQuestions = JSON.parse(response.text || "[]");
-      
+      const responseText = response.text || "[]";
+      let rawQuestions = [];
+      try {
+        rawQuestions = cleanAndParseJSON(responseText);
+      } catch (parseErr) {
+        console.error("[Server AI] JSON Parsing of response failed:", parseErr, responseText);
+        throw new Error("Invalid or broken JSON from model output");
+      }
+
+      if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
+        console.warn("[Server AI] Parsed questions array is empty. Returning empty questions array for client fallback.");
+        return res.json({ success: true, questions: [] });
+      }
+
       const normalizedAnswers = rawQuestions.map((q: any, idx: number) => {
         let options = q.options;
         if (language === 'Bilingual' && q.options_bilingual) {
@@ -373,7 +434,7 @@ async function startServer() {
         }
 
         return {
-          id: `gen-${subject}-${idx}-${Date.now()}`,
+          id: `gen-${subject}-${idx}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
           question: questionText,
           options: options,
           correctAnswer: q.correctAnswer || "A",
@@ -383,7 +444,10 @@ async function startServer() {
           teacherInsight: q.teacherInsight || "Study regular revisions of state topics for better memory.",
           wrongOptionsAnalysis: q.wrongOptionsAnalysis || { A: "Incorrect option", B: "Incorrect option", C: "Incorrect option", D: "Incorrect option" },
           extraFacts: q.extraFacts || [],
-          subject: subject
+          subject: subject,
+          question_hindi: q.question_hindi || "",
+          question_english: q.question_english || "",
+          options_bilingual: q.options_bilingual || null
         };
       });
 

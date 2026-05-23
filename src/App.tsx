@@ -179,6 +179,22 @@ import VideoAnalysis from './components/VideoAnalysis';
 import { useFeedback } from './hooks/useFeedback';
 import { UserStats } from './services/youtubeService';
 
+export interface QuizHistoryItem {
+  id: string;
+  date: string;
+  subject: string;
+  score: number;
+  total: number;
+  difficulty: string;
+  language: string;
+  topic?: string;
+}
+
+const cleanTextKey = (text: string) => {
+  if (!text) return "";
+  return text.toLowerCase().replace(/[^a-z0-9\u0900-\u097f]/g, "").trim();
+};
+
 export default function App() {
   const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS' | 'VIDEO_STUDIO'>('LANDING');
   const [loading, setLoading] = useState(false);
@@ -227,7 +243,9 @@ export default function App() {
   const [playingVideo, setPlayingVideo] = useState<YTVideo | null>(null);
   const [reportedQuestions, setReportedQuestions] = useState<number[]>([]);
   const [currentTab, setCurrentTab] = useState<'tests' | 'gurukul' | 'profile'>('tests');
-  const [activeTab, setActiveTab] = useState<'home' | 'practice' | 'mock' | 'bookmarks' | 'profile'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'practice' | 'mock' | 'bookmarks' | 'profile' | 'history'>('home');
+  const [quizHistory, setQuizHistory] = useState<QuizHistoryItem[]>([]);
+  const [quickNotes, setQuickNotes] = useState<Record<string, string>>({});
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [proModalOpen, setProModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -271,6 +289,25 @@ export default function App() {
         setScreen('HOME');
       } catch (e) {
         console.error("Failed to parse saved user", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('rpsc-quiz-history');
+    if (savedHistory) {
+      try {
+        setQuizHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Failed to load history", e);
+      }
+    }
+    const savedNotes = localStorage.getItem('rpsc-quick-notes');
+    if (savedNotes) {
+      try {
+        setQuickNotes(JSON.parse(savedNotes));
+      } catch (e) {
+        console.error("Failed to load quick notes", e);
       }
     }
   }, []);
@@ -440,8 +477,35 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (screen === 'RESULTS') {
-      updateGamification(getScore(), questions.length);
+    if (screen === 'RESULTS' && questions.length > 0) {
+      const finalScore = getScore();
+      updateGamification(finalScore, questions.length);
+
+      // Save to history list
+      const historyItem: QuizHistoryItem = {
+        id: `h-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        date: new Date().toLocaleString('en-IN', { 
+          day: '2-digit', 
+          month: 'short', 
+          year: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          hour12: true 
+        }),
+        subject: config?.subject || 'Rajasthan GK',
+        score: finalScore,
+        total: questions.length,
+        difficulty: config?.difficulty || 'Medium',
+        language: config?.language || 'Bilingual',
+        topic: config?.topic || ''
+      };
+
+      setQuizHistory(prev => {
+        const updated = [historyItem, ...prev];
+        const sliced = updated.slice(0, 50); // Cap at 50 records
+        localStorage.setItem('rpsc-quiz-history', JSON.stringify(sliced));
+        return sliced;
+      });
     }
   }, [screen]);
 
@@ -1891,6 +1955,122 @@ export default function App() {
 
 
             {/* ======================================= */}
+            {/* TAB CONTENT 6: QUIZ HISTORY AND PAST SESSIONS */}
+            {/* ======================================= */}
+            {activeTab === 'history' && (
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-6 px-1.5"
+              >
+                <div className="p-5 bg-white border border-slate-150 rounded-3xl shadow-sm text-left">
+                  <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <Clock size={16} className="text-purple-600 animate-pulse" />
+                      <h3 className="text-base font-extrabold text-slate-800 tracking-tight">Attempted Exams History</h3>
+                    </div>
+                    {quizHistory.length > 0 && (
+                      <button
+                        onClick={() => {
+                          feedback('click');
+                          if (window.confirm("Are you sure you want to clear your quiz history?")) {
+                            setQuizHistory([]);
+                            localStorage.removeItem('rpsc-quiz-history');
+                          }
+                        }}
+                        className="text-[10px] font-black text-rose-500 hover:text-rose-600 uppercase tracking-wider bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg transition-colors border border-rose-200"
+                      >
+                        Clear All
+                      </button>
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 mb-6 leading-relaxed">
+                    Track your daily progress, review score percentages, and see how your accuracy trends across subjects like Rajasthan GK, Indian GK, and Rajasthan Current Affairs.
+                  </p>
+
+                  {quizHistory.length === 0 ? (
+                    <div className="text-center py-12 p-4 bg-slate-50 border border-slate-150 border-dashed rounded-3xl">
+                      <span className="text-4xl filter grayscale opacity-60 mb-3 block">📜</span>
+                      <h4 className="text-sm font-extrabold text-slate-700 tracking-tight">No past sessions found</h4>
+                      <p className="text-[11px] text-slate-400 mt-1 max-w-[240px] mx-auto leading-normal">Your completed quizzes will populate here automatically with accuracy scores and dates.</p>
+                      <button
+                        onClick={() => {
+                          feedback('click');
+                          setActiveTab('practice');
+                        }}
+                        className="mt-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md shadow-purple-500/15"
+                      >
+                        Start Your First Quiz
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {quizHistory.map((item) => {
+                        const accuracyPercent = item.total > 0 ? Math.round((item.score / item.total) * 100) : 0;
+                        let scoreColor = "text-rose-600";
+                        let progressBg = "bg-rose-500";
+                        if (accuracyPercent >= 80) {
+                          scoreColor = "text-emerald-600";
+                          progressBg = "bg-emerald-500";
+                        } else if (accuracyPercent >= 50) {
+                          scoreColor = "text-amber-600";
+                          progressBg = "bg-amber-500";
+                        }
+
+                        return (
+                          <div 
+                            key={item.id} 
+                            className="p-4 bg-slate-50/50 hover:bg-slate-50 border border-slate-150 rounded-2xl flex flex-col gap-3 transition-colors text-left relative group overflow-hidden"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center flex-wrap gap-1.5">
+                                  <span className="text-[9px] font-black text-purple-600 bg-purple-50 px-2 py-0.5 rounded uppercase leading-none border border-purple-100">
+                                    {item.subject}
+                                  </span>
+                                  <span className="text-[9px] font-bold text-slate-400 bg-slate-100/85 px-1.5 py-0.5 rounded">
+                                    {item.difficulty}
+                                  </span>
+                                  {item.topic && (
+                                    <span className="text-[9px] text-slate-500 font-medium truncate max-w-[150px]">
+                                      • {item.topic}
+                                    </span>
+                                  )}
+                                </div>
+                                <h4 className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight mt-1.5 leading-tight">
+                                  Configured Language: {item.language}
+                                </h4>
+                                <span className="text-[10px] text-slate-400 font-mono mt-1 block">
+                                  Date Taken: {item.date}
+                                </span>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span className={`text-base md:text-lg font-black font-mono block leading-none ${scoreColor}`}>
+                                  {item.score}/{item.total}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-black uppercase mt-1 block heading-letter-spacing-none">
+                                  {accuracyPercent}% Match
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Score Tracker Graphical Progress */}
+                            <div className="w-full bg-slate-200 h-1 rounded-full overflow-hidden">
+                              <div className={`h-full ${progressBg}`} style={{ width: `${accuracyPercent}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+
+
+            {/* ======================================= */}
             {/* STICKY BOTTOM NAVIGATION BAR (MOBILE FIRST) */}
             {/* ======================================= */}
             <div className="fixed bottom-4 inset-x-4 max-w-sm sm:max-w-md mx-auto z-[400] bg-white/95 backdrop-blur-md rounded-[2rem] border border-slate-200/80 shadow-[0_12px_40px_rgba(0,0,0,0.06)] p-2">
@@ -1966,6 +2146,25 @@ export default function App() {
                   <Bookmark size={18} className={activeTab === 'bookmarks' ? 'stroke-[2.5px] drop-shadow-[0_0_8px_rgba(147,51,234,0.2)]' : 'stroke-[2px]'} />
                   <span className="text-[8px] font-extrabold uppercase tracking-tight leading-none">Bookmarks</span>
                   {activeTab === 'bookmarks' && (
+                    <motion.span 
+                      layoutId="activeTabBadge"
+                      className="absolute -bottom-1.5 w-1 h-1 bg-purple-600 rounded-full shadow-[0_0_8px_rgba(147,51,234,0.8)]"
+                    ></motion.span>
+                  )}
+                </button>
+
+                <button 
+                  onClick={() => {
+                    feedback('click');
+                    setActiveTab('history');
+                  }}
+                  className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-2xl transition-all relative ${
+                    activeTab === 'history' ? 'text-purple-600' : 'text-slate-400 hover:text-slate-600'
+                  }`}
+                >
+                  <History size={18} className={activeTab === 'history' ? 'stroke-[2.5px] drop-shadow-[0_0_8px_rgba(147,51,234,0.2)]' : 'stroke-[2px]'} />
+                  <span className="text-[8px] font-extrabold uppercase tracking-tight leading-none">History</span>
+                  {activeTab === 'history' && (
                     <motion.span 
                       layoutId="activeTabBadge"
                       className="absolute -bottom-1.5 w-1 h-1 bg-purple-600 rounded-full shadow-[0_0_8px_rgba(147,51,234,0.8)]"
@@ -2688,6 +2887,33 @@ export default function App() {
                                     </div>
                                   )}
                                 </motion.div>
+                              )}
+
+                              {/* Persistent Quick Notes per Question */}
+                              {questions[currentIndex] && (
+                                <div className="w-[94%] mx-auto mt-6 mb-8 p-4 rounded-[18px] bg-slate-50 border border-slate-200 text-left">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <FileText size={16} className="text-purple-600 animate-pulse" />
+                                    <span className="text-[10px] font-black text-purple-900 uppercase tracking-widest leading-none">Question Quick Note</span>
+                                  </div>
+                                  <p className="text-[10px] text-slate-500 mb-2 leading-tight">Jot down brief formulas, thoughts, or memory mnemonics here. Saved instantly.</p>
+                                  <textarea
+                                    value={quickNotes[cleanTextKey(questions[currentIndex]?.question)] || ""}
+                                    onChange={(e) => {
+                                      const questionText = questions[currentIndex]?.question;
+                                      if (questionText) {
+                                        const updated = {
+                                          ...quickNotes,
+                                          [cleanTextKey(questionText)]: e.target.value
+                                        };
+                                        setQuickNotes(updated);
+                                        localStorage.setItem('rpsc-quick-notes', JSON.stringify(updated));
+                                      }
+                                    }}
+                                    placeholder="e.g. Remember to check article 370-A..."
+                                    className="w-full min-h-[75px] p-3 text-[11px] bg-white text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-600 transition-all placeholder:text-slate-400 font-medium"
+                                  />
+                                </div>
                               )}
                             </div>
                           </div>
