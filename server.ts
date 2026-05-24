@@ -1,653 +1,77 @@
-import express from "express";
-import path from "path";
-import { createServer as createViteServer } from "vite";
-import { GoogleGenAI, Type } from "@google/genai";
+import express from 'express';
+import cors from 'cors';
+import admin from 'firebase-admin';
+import { GoogleGenAI } from '@google/genai';
 
-// Initialize Gemini
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+// 1. Firebase Admin SDK को शुरू करें
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
+    }),
+  });
+}
+const db = admin.firestore();
+
+// 2. Upgraded Gemini AI को सेटअप करें
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// 3. मुख्य क्विज़ एपीआई रूट (Route)
+app.get('/api/quiz', async (req, res) => {
+  const topic = (req.query.topic as string || "rajasthan gk").toLowerCase().trim();
+
+  try {
+    // स्टेप A: पहले Firebase डेटाबेस में क्विज़ चेक करें
+    const docRef = db.collection("quizzes").doc(topic);
+    const docSnap = await docRef.get();
+
+    if (docSnap.exists) {
+      return res.json(docSnap.data()); // डेटाबेस में सेव क्विज़ तुरंत भेजें (खर्च ₹0)
     }
+
+    // स्टेप B: अगर डेटाबेस खाली है, तो अपग्रेड जेमिनी से क्विज़ बनवाएं
+    const aiResponse = await ai.models.generateContent({
+      model: 'gemini-1.5-flash',
+      contents: `You are a Quiz Generator. Generate a complete 15-question unique multiple-choice quiz about '${topic}' in Hindi language. 
+      Return ONLY a raw valid JSON object matching this structure:
+      {
+        "quiz_title": "Quiz Title",
+        "questions": [
+          {
+            "id": 1,
+            "question": "Question text here?",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "correct_answer": "Exact text of correct option"
+          }
+        ]
+      }`,
+      config: {
+        temperature: 0.5,
+        maxOutputTokens: 4000,
+        responseMimeType: "application/json"
+      }
+    });
+
+    const quizData = JSON.parse(aiResponse.text.trim());
+
+    // स्टेप C: भविष्य के लिए इस नई क्विज़ को डेटाबेस में सेव करें
+    await docRef.set(quizData);
+
+    return res.json(quizData);
+
+  } catch (error: any) {
+    console.error("Quiz Server Error:", error);
+    return res.status(500).json({ error: "Unable to generate quiz.", details: error.toString() });
   }
 });
 
-async function startServer() {
-  const app = express();
-  const PORT = 3000;
-
-  // Middleware for JSON parsing
-  app.use(express.json());
-
-  // AI Video Engine: Analysis & Scripting
-  app.post("/api/video/script", async (req, res) => {
-    const { content, type } = req.body;
-    
-    try {
-      const prompt = `
-        You are a Cinematic AI Video Director specializing in Educational Content for competitive exams (RPSC).
-        The user has provided this content: "${content}"
-        The video type requested is: "${type || 'Reel'}"
-        
-        Create a detailed storyboard for a 15-30 second educational video.
-        Follow these "Suzume" and "Anime Cinematic" visual rules:
-        - High-quality anime visuals, environment lighting like Shinkai films.
-        - Protagonist: A study assistant character (Anime topper style) or a cute wild cat cub mascot.
-        - Scenes should have natural forest lighting, realistic shadows, and particles.
-        
-        Generate exactly 4 scenes. For each scene, provide:
-        1. Visual Prompt (detailed for an image generator)
-        2. Narration Script (Short, impactful)
-        3. On-screen text (Keywords)
-        4. Camera movement (e.g., slow zoom, pan right)
-        5. Music vibe
-        6. Duration in seconds (sum should be around 20-30s)
-      `;
-
-      const result = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              summary: { type: Type.STRING },
-              scenes: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    visualPrompt: { type: Type.STRING },
-                    narration: { type: Type.STRING },
-                    overlayText: { type: Type.STRING },
-                    camera: { type: Type.STRING },
-                    duration: { type: Type.NUMBER },
-                    music: { type: Type.STRING }
-                  },
-                  required: ["visualPrompt", "narration", "overlayText", "camera", "duration", "music"]
-                }
-              },
-              characterState: { type: Type.STRING, description: "mascot emotion for the video" }
-            },
-            required: ["title", "summary", "scenes", "characterState"]
-          }
-        }
-      });
-
-      res.json(JSON.parse(result.text || "{}"));
-    } catch (error) {
-      console.error("Video Script Error:", error);
-      res.status(500).json({ error: "Failed to generate video script" });
-    }
-  });
-
-  // AI Video Engine: Visual Generation
-  app.post("/api/video/visual", async (req, res) => {
-    const { prompt } = req.body;
-    
-    try {
-      // Use gemini-2.5-flash-image for general AI imagery
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: {
-          parts: [{ text: `${prompt}, high quality anime cinematic style, suzume environment lighting, 4k, digital art, vibrant colors, realistic shadows` }],
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: "9:16", // Default to vertical/reel format
-            imageSize: "1K"
-          }
-        }
-      });
-
-      let imageUrl = "";
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if (part.inlineData) {
-          imageUrl = `data:image/png;base64,${part.inlineData.data}`;
-          break;
-        }
-      }
-
-      if (imageUrl) {
-        res.json({ imageUrl });
-      } else {
-        throw new Error("No image generated by model");
-      }
-    } catch (error) {
-      console.error("Visual Gen Error:", error);
-      res.status(500).json({ error: "Failed to generate visual" });
-    }
-  });
-
-  // API Routes
-  app.get("/api/rpsc", (req, res) => {
-    // Simulating dynamic data with timestamps in the last few days
-    const now = new Date();
-    
-    // Randomize some fields to simulate "real-time" changes for the user's demo
-    const statuses = ["Exam Date", "Admit Card", "Result", "New Notification", "Answer Key"];
-    const departments = ["Education", "Medical & Health", "Revenue", "Home Department", "Ayurved"];
-    
-    const notifications = [
-      {
-        id: "1",
-        title: "Press Note regarding Exam Date for RAS/RTS Comb. Comp. Exam 2026",
-        date: new Date(now.getTime() - 1000 * 60 * 45).toISOString(), // 45 mins ago
-        category: "Exams",
-        isNew: true,
-        department: "General Administration",
-        status: "Exam Date"
-      },
-      {
-        id: "2",
-        title: "Extended Date for Online Application for Lecturer (Sanskrit Edu.) - 2026",
-        date: new Date(now.getTime() - 1000 * 60 * 60 * 3).toISOString(), // 3 hours ago
-        category: "Recruitment",
-        isNew: true,
-        department: "Sanskrit Education",
-        status: "New Notification"
-      },
-      {
-        id: "3",
-        title: "Question Paper for Statistical Officer Exam 2025 (Economics & Statistics)",
-        date: new Date(now.getTime() - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
-        category: "Question Papers",
-        isNew: false,
-        department: "Economics & Statistics",
-        status: "Answer Key"
-      },
-      {
-        id: "4",
-        title: "Final Answer Key for Assistant Professor (College Edu.) - 2024",
-        date: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 2).toISOString(), // 2 days ago
-        category: "Results",
-        isNew: false,
-        department: "College Education",
-        status: "Result"
-      },
-      {
-        id: "5",
-        title: "Admit Card Download for Junior Legal Officer (JLO) 2025",
-        date: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 3).toISOString(), // 3 days ago
-        category: "Admit Cards",
-        isNew: false,
-        department: "Law Department",
-        status: "Admit Card"
-      }
-    ];
-
-    // Add some random noise to simulate 'live' data changing
-    if (Math.random() > 0.7) {
-        notifications.unshift({
-            id: `temp-${Date.now()}`,
-            title: `URGENT: Press note regarding ${departments[Math.floor(Math.random() * departments.length)]} Interview Schedule`,
-            date: new Date().toISOString(),
-            category: "Interview",
-            isNew: true,
-            department: departments[Math.floor(Math.random() * departments.length)],
-            status: statuses[Math.floor(Math.random() * statuses.length)]
-        });
-    }
-
-    res.json({
-        success: true,
-        lastUpdated: now.toISOString(),
-        data: notifications
-    });
-  });
-
-  // Safe parser helper function to extract and parse JSON strictly and cleanly
-  const cleanAndParseJSON = (text: string): any => {
-    if (!text) return [];
-    let cleanText = text.trim();
-    
-    // Remove markdown code block markers if present
-    if (cleanText.startsWith("```")) {
-      cleanText = cleanText.replace(/^```(json)?/, "").replace(/```$/, "").trim();
-    }
-    
-    // Direct parse
-    try {
-      return JSON.parse(cleanText);
-    } catch (err) {
-      console.warn("[Server Safe Parser] Direct JSON parse failed, trying extraction...", err);
-    }
-    
-    // Try to extract content inside the first array brackets [...]
-    try {
-      const firstBracket = cleanText.indexOf("[");
-      const lastBracket = cleanText.lastIndexOf("]");
-      if (firstBracket !== -1 && lastBracket > firstBracket) {
-        const candidate = cleanText.substring(firstBracket, lastBracket + 1);
-        return JSON.parse(candidate);
-      }
-    } catch (err) {
-      console.warn("[Server Safe Parser] Bracket extraction failed:", err);
-    }
-
-    // Try to extract content inside the first object braces {...}
-    try {
-      const firstBrace = cleanText.indexOf("{");
-      const lastBrace = cleanText.lastIndexOf("}");
-      if (firstBrace !== -1 && lastBrace > firstBrace) {
-        const candidate = cleanText.substring(firstBrace, lastBrace + 1);
-        const parsedObj = JSON.parse(candidate);
-        if (Array.isArray(parsedObj)) return parsedObj;
-        if (parsedObj.questions && Array.isArray(parsedObj.questions)) return parsedObj.questions;
-        if (parsedObj.data && Array.isArray(parsedObj.data)) return parsedObj.data;
-        return [parsedObj];
-      }
-    } catch (err) {
-      console.error("[Server Safe Parser] Braces extraction failed:", err);
-    }
-    
-    return [];
-  };
-
-  // API Route: Secure Server-side Quiz Questions Generator using recommended Gemini model with reliable schema
-  app.post("/api/quiz/generate", async (req, res) => {
-    const { config } = req.body;
-    if (!config) {
-      return res.status(400).json({ error: "Missing config parameters" });
-    }
-    const { subject, difficulty, language, questionCount, topic, pattern, mode, aiTrackerState } = config;
-
-    const count = questionCount || 5;
-
-    try {
-      const isCurrentAffairs = subject === 'Rajasthan Current Affairs' || subject === 'National Current Affairs' || subject === 'Daily Live Quiz';
-      const isLiveQuiz = subject === 'Daily Live Quiz';
-      const isDailyChallenge = mode === 'daily';
-
-      const patternScope = pattern === '2012-2020' 
-        ? 'Old Pattern (2012–2020): Direct factual questions, simple recall-based, traditional government tests.' 
-        : 'New Pattern (2021–2026): Complex statement-based MCQs, confusing high-degree distractors, analytical, modern CBT government exam portals style.';
-
-      const examStyles = [
-        "Standard MCQ: Direct, hard factual question with 4 complex but distinct options based on official government records.",
-        "Statement-based: Give 2-3 detailed clauses/statements, and ask the candidate to determine which ones are correct (e.g., Options: A. Only 1, B. 1 and 2, C. 2 and 3, D. All are correct). Very realistic for RAS.",
-        "Assertion & Reason: Specify an Assertion (A) and Reason (R), with classic options: A. Both A and R are true and R is correct explanation of A; B. Both A and R are true but R is not the correct explanation of A; C. A is true but R is false; D. A is false but R is true.",
-        "Chronology: List 4-5 historical events, rulers, treaties, or government schemes, and ask the user to choose the correct chronological sequence in the options.",
-        "Match the Column: Present two columns (Column I and Column II) mapping districts to features, authors to books, schemes to years, and ask the user to choose the correct mapping matrix from options."
-      ];
-
-      const selectedStyle = examStyles[Math.floor(Math.random() * examStyles.length)];
-      
-      let adaptiveInstructions = "";
-      if (aiTrackerState) {
-        const { weakTopics, weakPatterns, weakSubjects, mistakeHistory } = aiTrackerState;
-        if ((weakTopics && weakTopics.length > 0) || (weakPatterns && weakPatterns.length > 0) || (weakSubjects && weakSubjects.length > 0)) {
-          adaptiveInstructions = `
-====================================================
-ADAPTIVE COACHING TRIGGER - WEAKNESS REMEDIATION
-====================================================
-The candidate's live behavior tracking database indicates the following critical weak areas:
-- Weak Topics/Concepts: ${JSON.stringify(weakTopics || [])}
-- Weak Cognitive Exam Patterns: ${JSON.stringify(weakPatterns || [])}
-- Weak Subjects: ${JSON.stringify(weakSubjects || [])}
-- Sample of recently failed/skipped questions to remediate: ${JSON.stringify((mistakeHistory || []).slice(-4).map((m: any) => m.question))}
-
-You MUST bias approximately 50-60% of this quiz to cover these exact weak topics or similar difficult concepts to help them practice and master their weaknesses!
-You MUST format at least 40% of the questions using their weak cognitive exam patterns (e.g., Assertion & Reason, Statement-based, or Chronology) to train their analytical skills.
-Vary the remaining questions to keep the exam comprehensive. Make everything highly high-yield.
-`;
-        }
-      }
-
-      let prompt = `
-${adaptiveInstructions}
-You are an advanced AI Quiz Engine for competitive exams like RPSC, REET, RAS, UPSC, SSC, CET, Banking, Railway, and State Exams.
-
-YOUR TASK:
-Generate HIGH-QUALITY, CATEGORY-SPECIFIC MCQs STRICTLY according to the selected category/subject.  
-NEVER mix Current Affairs questions into Math, Reasoning, Hindi, English, Science, or other categories.
-
-====================================================
-QUIZ CONFIGURATION
-====================================================
-Subject / Category: ${subject}
-Focus Topic: ${topic ? topic : 'General syllabus for ' + subject}
-Difficulty Level: ${difficulty}
-Language Option: ${language}
-Question Count: ${count}
-Exam Pattern Style: ${patternScope}
-Question Layout Pattern: ${selectedStyle}
-
-====================================================
-CRITICAL CATEGORY FILTERING RULES (STRICTLY ENFORCED)
-====================================================
-1. If subject/category is "Mathematics" → you MUST generate ONLY Mathematics/Mental Ability questions.
-   - Topics allowed: Profit & Loss, Percentage, Ratio, Simplification, Algebra, Trigonometry, Geometry, Time & Work, Average, Number System, SI-CI, Data Interpretation.
-   - Rules: Include step-by-step mathematical calculations and formulas where needed. Keep options highly realistic. Avoid Current Affairs and GK completely.
-2. If subject/category is "Reasoning" → you MUST generate ONLY Logical/Analytical Reasoning questions.
-   - Topics allowed: Coding-Decoding, Blood Relation, Direction Sense, Analogy, Series, Puzzle, Ranking, Clock, Calendar, Syllogism.
-   - Rules: Focus on logic, sequencing, patterns, and blood/spatial structures. NO general knowledge or current affairs.
-3. If subject/category is "English" → you MUST generate ONLY English Grammar and Vocabulary questions.
-   - Topics allowed: Tense, Voice, Narration, Error Detection, Vocabulary, Synonyms, Antonyms, Idioms, Reading Grammar.
-   - Rules: The question text and options MUST be in English. NO other subjects.
-4. If subject/category is "Hindi" → you MUST generate ONLY Hindi Grammar and Literature questions.
-   - Topics allowed: संधि, समास, मुहावरे, लोकोक्तियाँ, वाक्य शुद्धि, पर्यायवाची, विलोम, रस, छंद, अलंकार.
-   - Rules: The questions, options, and explanations MUST be in Hindi language. Do NOT use English vocabulary or grammar topics.
-5. If subject/category is "Science" → you MUST generate ONLY Science questions (Physics, Chemistry, Biology, Space, Tech). Do not mix current political/social news unless it is tech/space related.
-6. If subject/category is "Rajasthan Current Affairs" → you MUST generate ONLY Rajasthan-specific current affairs from years 2025-2026.
-7. If subject/category is "National Current Affairs" → you MUST generate ONLY Indian/National/International current affairs from 2025-2026.
-8. If subject/category is "Rajasthan GK" → you MUST generate ONLY Rajasthan history, geography, arts, polity, and culture. No general current affairs or other state topics.
-
-====================================================
-CURRENT AFFAIRS RULES (FOR CURRENT AFFAIRS & LIVE QUIZ ONLY)
-====================================================
-- Use latest verified news, awards, schemes, and data from 2025–2026.
-- Source Priority: Government Web Portals, PIB, ISRO, RBI, BBC, Indian Express, and The Hindu.
-- Must be factual, include recent schemes/events, include exact dates if important, and strictly avoid outdated or mock news.
-
-====================================================
-QUESTION QUALITY RULES
-====================================================
-- Generate EXACTLY ${count} questions. No more, no less.
-- Distractors must be realistic, challenging, and confusing for competitive exams (RPSC, RAS, SSC, etc.). No trivial or silly answers.
-- Avoid duplicate questions. Vary the concepts tested.
-- Keep mobile-friendly formatting.
-- Difficulty MUST correspond to: ${difficulty}.
-
-====================================================
-LANGUAGE AND RETRIEVAL SCHEMA RULES
-====================================================
-- If Language = "Hindi": The response fields (question, question_hindi, options, explanation, explanation_hindi) MUST be fully populated in pure Hindi.
-- If Language = "English": The response fields MUST be fully populated in English.
-- If Language = "Bilingual": You MUST generate BOTH Hindi and English content. Populate the 'question_hindi', 'question_english', 'options_bilingual' (with objects containing 'hindi' and 'english' properties for A, B, C, D), 'explanation_hindi', and 'explanation_english' fields meticulously so the system can render them side-by-side or layered.
-`;
-
-      console.log(`[Server AI] Generating ${count} MCQs, subject: ${subject}, language: ${language}`);
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt + `\n\nReturn EXACTLY ${count} items. Strictly follow the JSON schema array structure containing ${count} questions.`,
-        config: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 8192, // Increase output token limit to prevent truncation
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                question: { type: Type.STRING },
-                question_hindi: { type: Type.STRING },
-                question_english: { type: Type.STRING },
-                options: {
-                  type: Type.OBJECT,
-                  properties: {
-                    A: { type: Type.STRING },
-                    B: { type: Type.STRING },
-                    C: { type: Type.STRING },
-                    D: { type: Type.STRING }
-                  },
-                  required: ["A", "B", "C", "D"]
-                },
-                options_bilingual: {
-                  type: Type.OBJECT,
-                  properties: {
-                    A: {
-                      type: Type.OBJECT,
-                      properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } },
-                      required: ["hindi", "english"]
-                    },
-                    B: {
-                      type: Type.OBJECT,
-                      properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } },
-                      required: ["hindi", "english"]
-                    },
-                    C: {
-                      type: Type.OBJECT,
-                      properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } },
-                      required: ["hindi", "english"]
-                    },
-                    D: {
-                      type: Type.OBJECT,
-                      properties: { hindi: { type: Type.STRING }, english: { type: Type.STRING } },
-                      required: ["hindi", "english"]
-                    }
-                  }
-                },
-                correctAnswer: { type: Type.STRING, enum: ["A", "B", "C", "D"] },
-                explanation: { type: Type.STRING },
-                explanation_hindi: { type: Type.STRING },
-                explanation_english: { type: Type.STRING },
-                difficulty: { type: Type.STRING },
-                wrongOptionsAnalysis: {
-                  type: Type.OBJECT,
-                  properties: {
-                    A: { type: Type.STRING },
-                    B: { type: Type.STRING },
-                    C: { type: Type.STRING },
-                    D: { type: Type.STRING }
-                  }
-                },
-                teacherInsight: { type: Type.STRING },
-                extraFacts: { type: Type.ARRAY, items: { type: Type.STRING } }
-              },
-              required: ["question", "options", "correctAnswer", "explanation"]
-            }
-          }
-        }
-      });
-
-      const responseText = response.text || "[]";
-      let rawQuestions = [];
-      try {
-        rawQuestions = cleanAndParseJSON(responseText);
-      } catch (parseErr) {
-        console.error("[Server AI] JSON Parsing of response failed:", parseErr, responseText);
-        throw new Error("Invalid or broken JSON from model output");
-      }
-
-      if (!Array.isArray(rawQuestions) || rawQuestions.length === 0) {
-        console.warn("[Server AI] Parsed questions array is empty. Returning empty questions array for client fallback.");
-        return res.json({ success: true, questions: [] });
-      }
-
-      const normalizedAnswers = rawQuestions.map((q: any, idx: number) => {
-        let options = q.options;
-        if (language === 'Bilingual' && q.options_bilingual) {
-          const ob = q.options_bilingual;
-          options = {
-            A: ob.A ? `${ob.A.hindi || ''} / ${ob.A.english || ''}` : options.A,
-            B: ob.B ? `${ob.B.hindi || ''} / ${ob.B.english || ''}` : options.B,
-            C: ob.C ? `${ob.C.hindi || ''} / ${ob.C.english || ''}` : options.C,
-            D: ob.D ? `${ob.D.hindi || ''} / ${ob.D.english || ''}` : options.D,
-          };
-        }
-
-        let questionText = q.question;
-        let explanationText = q.explanation || q.explanation_hindi || q.explanation_english;
-
-        if (language === 'Bilingual') {
-          questionText = `${q.question_hindi || q.question}\n\n${q.question_english || q.question}`;
-          explanationText = `${q.explanation_hindi || explanationText || ''}\n\n${q.explanation_english || explanationText || ''}`;
-        } else if (language === 'Hindi') {
-          questionText = q.question_hindi || q.question;
-          explanationText = q.explanation_hindi || explanationText;
-        } else if (language === 'English') {
-          questionText = q.question_english || q.question;
-          explanationText = q.explanation_english || explanationText;
-        }
-
-        return {
-          id: `gen-${subject}-${idx}-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          question: questionText,
-          options: options,
-          correctAnswer: q.correctAnswer || "A",
-          explanation: explanationText || "Expert explanation for this concept.",
-          explanationHindi: q.explanation_hindi || q.explanation || "",
-          explanationEnglish: q.explanation_english || q.explanation || "",
-          teacherInsight: q.teacherInsight || "Study regular revisions of state topics for better memory.",
-          wrongOptionsAnalysis: q.wrongOptionsAnalysis || { A: "Incorrect option", B: "Incorrect option", C: "Incorrect option", D: "Incorrect option" },
-          extraFacts: q.extraFacts || [],
-          subject: subject,
-          question_hindi: q.question_hindi || "",
-          question_english: q.question_english || "",
-          options_bilingual: q.options_bilingual || null
-        };
-      });
-
-      res.json({ success: true, questions: normalizedAnswers });
-    } catch (err) {
-      console.error("[Server AI] Quiz generation error:", err);
-      res.status(500).json({ error: "Failed to generate questions server-side" });
-    }
-  });
-
-  // API Route: Secure Server-side Search Grounded RPSC Notifications fetcher
-  app.get("/api/rpsc/notifications", async (req, res) => {
-    try {
-      const prompt = `
-        Persona: You are a reliable academic assistant.
-        Task: Use Google Search to find the 5 most recent and relevant notifications from the RPSC (Rajasthan Public Service Commission) official website or trusted news sources.
-        Requirements: Include upcoming exam dates for RAS, First Grade, Second Grade, and other major exams planned for 2024-2026.
-      `;
-
-      console.log(`[Server AI] Fetching live grounded notifications...`);
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING },
-                date: { type: Type.STRING },
-                link: { type: Type.STRING },
-                type: { type: Type.STRING, enum: ["EXAM", "RESULT", "NEWS"] },
-                description: { type: Type.STRING }
-              },
-              required: ["title", "date", "type", "description"]
-            }
-          }
-        }
-      });
-
-      const notifications = JSON.parse(response.text || "[]");
-      res.json({ success: true, notifications });
-    } catch (err) {
-      console.error("[Server AI] Notification retrieval error:", err);
-      // Return simulated static notices as a bulletproof runtime backup
-      res.json({
-        success: true,
-        notifications: [
-          {
-            title: "Press Note regarding Exam Date for RAS/RTS Comb. Comp. Exam 2026",
-            date: "May 20, 2026",
-            link: "https://rpsc.rajasthan.gov.in",
-            type: "EXAM",
-            description: "The RAS examination phase schedule has been officially updated on the commission board notice."
-          },
-          {
-            title: "Extended Date for Online Application for Lecturer (Sanskrit Edu.) - 2026",
-            date: "May 19, 2026",
-            link: "https://rpsc.rajasthan.gov.in",
-            type: "NEWS",
-            description: "Extended deadline notice for lectureship applications across certified state colleges."
-          }
-        ]
-      });
-    }
-  });
-
-  // API Route: Secure Server-side Video Learning Analyst
-  app.post("/api/video/analyze", async (req, res) => {
-    const { video } = req.body;
-    if (!video) {
-      return res.status(400).json({ error: "Missing video parameter" });
-    }
-
-    try {
-      const prompt = `
-        Persona: You are a Video Learning Analyst for RPSC exams. 
-        Video Title: ${video.title}
-        Channel: ${video.channelTitle}
-        Description: ${video.description}
-
-        TASK:
-        1. Summarize the core educational concepts of this video.
-        2. Identify 3-5 key topics covered.
-        3. Generate a 3-question mini quiz (MCQ) to test the user after watching.
-        4. Propose 2 "Review Segments" with estimated timestamps (e.g., 05:30) and WHY the student should focus on that part.
-      `;
-
-      console.log(`[Server AI] Analyzing educational video: ${video.title}`);
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              summary: { type: Type.STRING },
-              keyTopics: { type: Type.ARRAY, items: { type: Type.STRING } },
-              miniQuiz: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    question: { type: Type.STRING },
-                    options: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    correctIndex: { type: Type.NUMBER },
-                    explanation: { type: Type.STRING }
-                  },
-                  required: ["question", "options", "correctIndex", "explanation"]
-                }
-              },
-              reviewSegments: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    title: { type: Type.STRING },
-                    timestamp: { type: Type.STRING },
-                    seconds: { type: Type.NUMBER },
-                    reason: { type: Type.STRING }
-                  },
-                  required: ["title", "timestamp", "seconds", "reason"]
-                }
-              }
-            },
-            required: ["summary", "keyTopics", "miniQuiz", "reviewSegments"]
-          }
-        }
-      });
-
-      const analysis = JSON.parse(response.text || "{}");
-      res.json({ success: true, analysis });
-    } catch (err) {
-      console.error("[Server AI] Video analysis error:", err);
-      res.status(500).json({ error: "Failed to analyze video" });
-    }
-  });
-
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*all", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-  });
-}
-
-startServer();
+// सर्वर को लाइव करें
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Quiz server running on port ${PORT}`);
+});
