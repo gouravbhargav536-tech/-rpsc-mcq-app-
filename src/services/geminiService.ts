@@ -1,16 +1,15 @@
 import { Question } from "../types";
 
-// हमने पुराने भारी-भरकम क्वेश्चन बैंक को हटाकर इसे खाली कर दिया है
-// इसे यहाँ रखना ज़रूरी है ताकि ऐप का बिल्ड फेल न हो
+// यह ऐरे खाली होना चाहिए लेकिन इसका यहाँ रहना ज़रूरी है ताकि प्रोजेक्ट बिल्ड हो सके
 export const OFFLINE_QUESTION_BANK: any[] = [];
 
 /**
- * 1. डेटाबेस से क्विज़ लाने का मुख्य फ़ंक्शन
- * यह सीधे आपके Netlify बैकएंड (Firebase + Gemini Engine) से बात करेगा
+ * 1. क्विज़ जनरेट करने का फ़ंक्शन 
+ * (हमने नाम बदलकर 'generateQuizQuestions' कर दिया है ताकि App.tsx एरर न दे)
  */
-export const generateQuizFromAI = async (topic: string): Promise<any> => {
+export const generateQuizQuestions = async (topic: string): Promise<any> => {
   try {
-    // यह यूज़र के टॉपिक को लेकर नेटलिफ़ाई बैकएंड पर जाएगा
+    // यह सीधे आपके नेटलिफ़ाई बैकएंड इंजन (Firebase + Upgraded Gemini) को कॉल करेगा
     const response = await fetch(`/.netlify/functions/quiz-engine?topic=${encodeURIComponent(topic)}`);
     
     if (!response.ok) {
@@ -27,7 +26,7 @@ export const generateQuizFromAI = async (topic: string): Promise<any> => {
 
 /**
  * 2. वीडियो एनालिसिस करने का फ़ंक्शन
- * इसे यहाँ निर्यात (Export) रखना ज़रूरी है ताकि VideoAnalysis.tsx फ़ाइल क्रैश न हो
+ * इसे यहाँ रखना ज़रूरी है ताकि VideoAnalysis.tsx फ़ाइल क्रैश न हो
  */
 export const analyzeVideoContent = async (videoUrl: string): Promise<any> => {
   try {
