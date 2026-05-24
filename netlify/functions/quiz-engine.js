@@ -1,24 +1,21 @@
 const admin = require("firebase-admin");
 const { GoogleGenAI } = require("@google/genai");
 
-// 1. मुफ़्त Firebase Admin SDK को सुरक्षित रूप से शुरू करें
+// 1. Firebase Admin SDK को सुरक्षित रूप से शुरू करें
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
-      // नेटलिफ़ाई की सीक्रेट की से न्यू-लाइन कैरेक्टर्स (\n) को ठीक करना ज़रूरी है
-      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
     }),
   });
 }
 
 const db = admin.firestore();
-
-// 2. Gemini AI को अपनी अपग्रेड की (Key) के साथ सेटअप करें
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 exports.handler = async (event) => {
-  // CORS प्री-फ़्लाइट रिक्वेस्ट को संभालना (ताकि फ्रंटएंड ब्लॉक न हो)
+  // CORS प्री-फ़्लाइट हैंडलर (ताकि फ्रंटएंड ब्लॉक न हो)
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
@@ -31,16 +28,14 @@ exports.handler = async (event) => {
     };
   }
 
-  // यूज़र ने ऐप में जो भी टॉपिक (जैसे: ranthambore) खोजा है, उसे पढ़ें
   const topic = (event.queryStringParameters.topic || "rajasthan gk").toLowerCase().trim();
 
   try {
-    // स्टेप A: सबसे पहले मुफ़्त डेटाबेस (Firebase) में क्विज़ चेक करें
+    // स्टेप A: पहले Firebase डेटाबेस में क्विज़ चेक करें
     const docRef = db.collection("quizzes").doc(topic);
     const docSnap = await docRef.get();
 
     if (docSnap.exists) {
-      // क्विज़ मौजूद है! इसे तुरंत मुफ़्त में (FREE) यूज़र को भेजें
       return {
         statusCode: 200,
         headers: {
@@ -51,23 +46,36 @@ exports.handler = async (event) => {
       };
     }
 
-    // स्टेप B: अगर डेटाबेस में नहीं है, तो अपग्रेड Gemini AI को कॉल करके 15 प्रश्नों की अनूठी क्विज़ बनाएं
+    // स्टेप B: सख्त सिस्टम प्रॉम्ट के साथ अपग्रेड जेमिनी को कॉल करें
     const aiResponse = await ai.models.generateContent({
       model: 'gemini-1.5-flash',
-      contents: `Generate a complete 15-question unique multiple-choice quiz about ${topic} in Hindi language. Every question must have distinct choices.`,
+      contents: `You are a Quiz Generator API. Generate a complete 15-question unique multiple-choice quiz about '${topic}' in Hindi language. 
+      Return ONLY a raw valid JSON object matching this structure:
+      {
+        "quiz_title": "Quiz Title",
+        "questions": [
+          {
+            "id": 1,
+            "question": "Question text here?",
+            "options": ["Option A", "Option B", "Option C", "Option D"],
+            "correct_answer": "Exact text of correct option"
+          }
+        ]
+      }`,
       config: {
-        temperature: 0.6,
+        temperature: 0.5,
         maxOutputTokens: 4000,
-        responseMimeType: "application/json"
+        responseMimeType: "application/json" // शुद्ध JSON आउटपुट
       }
     });
 
-    const quizData = JSON.parse(aiResponse.text);
+    // एआई के टेक्स्ट को पार्स करें
+    const cleanText = aiResponse.text.trim();
+    const quizData = JSON.parse(cleanText);
 
-    // स्टेप C: इस नई क्विज़ को अगली बार के लिए मुफ़्त डेटाबेस में हमेशा के लिए सेव करें
+    // स्टेप C: भविष्य के लिए डेटाबेस में सेव करें
     await docRef.set(quizData);
 
-    // यूज़र को नई बनी हुई क्विज़ वापस भेजें
     return {
       statusCode: 200,
       headers: {
@@ -78,10 +86,11 @@ exports.handler = async (event) => {
     };
 
   } catch (error) {
+    console.error("Quiz Engine Error:", error);
     return {
       statusCode: 500,
       headers: { "Access-Control-Allow-Origin": "*" },
-      body: JSON.stringify({ error: "System failed", details: error.toString() }),
+      body: JSON.stringify({ error: "Unable to generate quiz. Please try again.", details: error.toString() }),
     };
   }
 };
