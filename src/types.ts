@@ -9,8 +9,6 @@ export interface Question {
   };
   correctAnswer: 'A' | 'B' | 'C' | 'D';
   explanation: string;
-  explanationHindi?: string;
-  explanationEnglish?: string;
   teacherInsight?: string;
   videoUrl?: string;
   imageUrl?: string;
@@ -33,29 +31,12 @@ export type Subject =
   | 'English'
   | 'Reasoning'
   | 'Rajasthan Current Affairs'
-  | 'National Current Affairs'
-  | 'Daily Live Quiz';
+  | 'National Current Affairs';
 
 export type ExamPattern = '2012-2020' | '2021-Present';
 
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
-export type Language = 'Hindi' | 'English' | 'Hinglish' | 'Bilingual';
-export type VideoCategory = 'shorts' | 'lectures' | 'strategy' | 'trending';
-
-export interface YTVideo {
-  id: string;
-  title: string;
-  thumbnail: string;
-  description: string;
-  publishDate: string;
-  channelTitle: string;
-  category: VideoCategory;
-  duration?: string;
-  viewCount?: string;
-  recommendationReason?: string;
-}
-
-export type QuizMode = 'instant' | 'exam' | 'daily';
+export type Language = 'Hindi' | 'English' | 'Hinglish';
 
 export interface QuizConfig {
   subject: Subject;
@@ -63,9 +44,7 @@ export interface QuizConfig {
   language: Language;
   questionCount: number;
   pattern: ExamPattern;
-  mode: QuizMode;
   topic?: string;
-  aiTrackerState?: any;
 }
 
 export interface QuizResult {
@@ -74,24 +53,6 @@ export interface QuizResult {
   timeSpent: number;
   questions: Question[];
   userAnswers: (string | null)[];
-}
-
-export interface VideoAnalysis {
-  videoId: string;
-  keyTopics: string[];
-  summary: string;
-  miniQuiz: {
-    question: string;
-    options: string[];
-    correctIndex: number;
-    explanation: string;
-  }[];
-  reviewSegments: {
-    title: string;
-    timestamp: string;
-    seconds: number;
-    reason: string;
-  }[];
 }
 
 export type ThemeType = 'geometric' | 'rajasthan';

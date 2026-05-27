@@ -1,6 +1,8 @@
 {
   "name": "RPSC AI MCQ Master",
-  "description": "Advanced AI-powered exam portal with real-time RPSC tracking and Cinematic AI Video Story Engine for immersive learning.",
+  "description": "AI-powered MCQ Quiz Generator for RPSC and competitive exams with adaptive learning and instant feedback.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

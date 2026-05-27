@@ -71,7 +71,7 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-transparent flex flex-col p-6 items-center justify-center relative overflow-hidden">
+    <div className="min-h-screen bg-bg-page flex flex-col p-6 items-center justify-center relative overflow-hidden">
       {/* Background Decor (Geometric Balance Style) */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
         <div className="absolute top-[-100px] left-[-100px] w-[500px] h-[500px] bg-primary/10 rounded-full blur-[120px]" />
@@ -82,14 +82,14 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
       <div className="absolute top-4 sm:top-8 left-4 sm:left-8 right-4 sm:right-8 flex items-center justify-between z-10">
         <button 
           onClick={onBack}
-          className="flex items-center gap-2 text-slate-700 hover:text-primary transition-colors font-bold uppercase text-[10px] sm:text-xs tracking-widest"
+          className="flex items-center gap-2 text-slate-500 hover:text-primary transition-colors font-bold uppercase text-[10px] sm:text-xs tracking-widest"
         >
           <ArrowLeft size={16} /> <span className="hidden xs:inline">{curr.back}</span>
         </button>
 
         <button 
           onClick={() => setLang(lang === 'EN' ? 'HI' : 'EN')}
-          className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-900/5 border border-slate-900/10 rounded-full hover:border-primary transition-all text-[10px] sm:text-xs font-bold text-slate-900"
+          className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white/5 border border-white/10 rounded-full hover:border-primary transition-all text-[10px] sm:text-xs font-bold text-main"
         >
           <Languages size={14} /> {lang === 'EN' ? 'हिंदी' : 'EN'}
         </button>
@@ -98,10 +98,10 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
       <motion.div 
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-md bg-white border border-slate-200 p-6 sm:p-10 shadow-2xl relative z-10 mt-12 sm:mt-0 rounded-3xl"
+        className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-6 sm:p-10 shadow-2xl relative z-10 mt-12 sm:mt-0"
       >
         <div className="text-center mb-10">
-          <h2 className="text-3xl font-display italic text-slate-900 mb-2">
+          <h2 className="text-3xl font-display italic text-main mb-2">
             {mode === 'LOGIN' ? curr.loginTitle : curr.signupTitle}
           </h2>
           <div className="h-1 w-12 bg-primary mx-auto"></div>
@@ -123,7 +123,7 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
                     required
                     type="text"
                     placeholder="Enter your name"
-                    className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 text-sm outline-none focus:border-primary transition-colors text-slate-900 rounded-xl"
+                    className="w-full bg-white/5 border border-white/10 p-4 pl-12 text-sm outline-none focus:border-primary transition-colors text-main"
                     value={formData.name}
                     onChange={e => setFormData({ ...formData, name: e.target.value })}
                   />
@@ -140,7 +140,7 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
                 required
                 type="email"
                 placeholder="email@example.com"
-                className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 text-sm outline-none focus:border-primary transition-colors text-slate-900 rounded-xl"
+                className="w-full bg-white/5 border border-white/10 p-4 pl-12 text-sm outline-none focus:border-primary transition-colors text-main"
                 value={formData.email}
                 onChange={e => setFormData({ ...formData, email: e.target.value })}
               />
@@ -155,7 +155,7 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
                 required
                 type={showPassword ? "text" : "password"}
                 placeholder="••••••••"
-                className="w-full bg-slate-50 border border-slate-200 p-4 pl-12 pr-12 text-sm outline-none focus:border-primary transition-colors text-slate-900 rounded-xl"
+                className="w-full bg-white/5 border border-white/10 p-4 pl-12 pr-12 text-sm outline-none focus:border-primary transition-colors text-main"
                 value={formData.password}
                 onChange={e => setFormData({ ...formData, password: e.target.value })}
               />
