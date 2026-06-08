@@ -3,7 +3,27 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RPSC AI-Quizzer</title>
+    <title>RPSC AI MCQ Master</title>
+    <script>
+      // Defensive measure: Prevent errors when libraries try to overwrite window.fetch
+      (function() {
+        try {
+          const originalFetch = window.fetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() { return originalFetch; },
+            set: function(v) { 
+              // By providing a setter (even one that does nothing), we prevent 
+              // "TypeError: Cannot set property fetch of #<Window> which has only a getter"
+              console.warn('Blocking attempt to overwrite window.fetch');
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          // If we can't even define it, hopefully it's because it's already writable
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,7 +1,10 @@
-// सबसे ऊपर axios इम्पोर्ट करें ताकि fetch का नाम न आए
-// @ts-ignore
 import axios from 'axios';
 import { Question, QuizConfig } from "../types";
+
+// Force XHR adapter to avoid "Cannot set property fetch" issues in some preview environments
+if (axios.defaults) {
+  (axios.defaults as any).adapter = 'xhr';
+}
 
 export async function generateQuizQuestions(config: QuizConfig): Promise<Question[]> {
   const { subject, difficulty, language, questionCount, topic, pattern } = config;
@@ -51,11 +54,10 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
     - 'patternYear': Specific exam style (e.g. "RPSC 2024 Mixed").
   `;
 
-  // URL Setup
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${apiKey}`;
+  // URL Setup - Fixed model to gemini-1.5-flash
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
   try {
-    // 💡 FETCH की जगह AXIOS का उपयोग किया गया है ताकि Google AI Studio प्रीव्यू एरर न दे
     const response = await axios.post(url, {
       contents: [
         {
