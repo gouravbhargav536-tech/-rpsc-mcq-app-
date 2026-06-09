@@ -1,153 +1,178 @@
-import axios from 'axios';
+import { GoogleGenAI, Type } from "@google/genai";
 import { Question, QuizConfig } from "../types";
 
-// Force XHR adapter to avoid "Cannot set property fetch" issues in some preview environments
-if (axios.defaults) {
-  (axios.defaults as any).adapter = 'xhr';
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI(): GoogleGenAI {
+  if (!aiInstance) {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not defined in the environment.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return aiInstance;
 }
 
 export async function generateQuizQuestions(config: QuizConfig): Promise<Question[]> {
   const { subject, difficulty, language, questionCount, topic, pattern } = config;
+  const ai = getAI();
 
-  // Safely resolve the API key across potential Vite/process environments
-  const apiKey = 
-    ((import.meta as any).env?.VITE_GEMINI_API_KEY as string) || 
-    ((import.meta as any).env?.GEMINI_API_KEY as string) || 
-    (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined) ||
-    "";
-
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY is not defined. Please configure your API key in Settings > Secrets.");
-  }
-
+  const isCurrentAffairs = subject === 'Rajasthan Current Affairs' || subject === 'National Current Affairs' || subject === 'Daily Live Quiz';
+  const isLiveQuiz = subject === 'Daily Live Quiz';
+  
   const patternScope = pattern === '2012-2020' 
     ? 'Old Pattern (2012–2020): Direct factual questions, simple recall-based.' 
-    : 'New Pattern (2021–Present): Statement-based, confusing options, analytical, modern exam style.';
+    : 'New Pattern (2021–2026): Statement-based, confusing options, analytical, modern exam style.';
 
-  const prompt = `
-    Persona: You are an expert RPSC (Rajasthan Public Service Commission) and competitive exam teacher.
-    Subject: ${subject}
-    ${topic ? `Focus Topic: ${topic}` : ''}
-    Exam Level: ${difficulty}
-    Pattern Goal: ${patternScope}
+  const prompt = isLiveQuiz 
+    ? `
+    Persona: You are a real-time Current Affairs analyst.
+    Task: Search for today's top headlines from Google News, BBC News, and major Indian sources (like Utkarsh classes updates if available).
     Number of Questions: ${questionCount}
     Requested Language: ${language}
     
-    CRITICAL INSTRUCTIONS:
-    1. LATEST DATA: Use real concepts, syllabus details, and actual factual events from Rajasthan and India.
-    2. TRICKY QUESTIONS: For the New Pattern, use statement-based questions (e.g., "Which of these statements about X is INCORRECT?"). Use confusing options that test deep understanding.
-    3. SPECIAL FOCUS:
-       - If 'Rajasthan Current Affairs' or 'Rajasthan GK': Emphasize regional history, geography, sports, cabinet changes, schemes, and bills.
-       - If 'National Current Affairs' or others: Emphasize awards, schemes, indexes, and key syllabus elements.
-    4. TEACHER STYLE: Use a "Guruji" tone for insights—supportive yet strict about accuracy.
-    
-    Each JSON object must follow this structure exactly:
-    - 'question': Tricky question.
-    - 'options': A, B, C, D option values.
-    - 'correctAnswer': String "A" | "B" | "C" | "D".
-    - 'explanation': Clear factual explanation.
-    - 'teacherInsight': "Guruji" style insight in Hinglish (Hindi+English Mixed) or the selected language with logic/mnemonics.
-    - 'wrongOptionsAnalysis': A JSON object mapping A, B, C, D keys to short explanations of why that option is wrong (or why it's a trap).
-    - 'extraFacts': Array of 2-3 related facts.
-    - 'videoUrl': Relevant YouTube video ID or search string for concept.
-    - 'imageUrl': Descriptive image search query.
-    - 'patternYear': Specific exam style (e.g. "RPSC 2024 Mixed").
+    INSTRUCTIONS:
+    1. USE GOOGLE SEARCH: Find real news from the last 24-48 hours.
+    2. SOURCES: Prioritize Google News, BBC, and official Indian govt releases for global/national context.
+    3. FORMAT: Create tricky RPSC/SSC style questions. Follow the expert paper setter persona.
+    4. VARIETY: Mix sports, politics, awards, and major global events.
+    5. QUALITY: Ensure strict factual accuracy and clear single-choice options.
+    `
+    : `
+    Persona: You are an expert RPSC exam paper setter and AI tutor. Your mission is to generate ${questionCount} high-quality MCQs that strictly follow the RPSC exam pattern.
+    Subject: ${subject}
+    ${topic ? `Focus Topic: ${topic}` : ''}
+    Difficulty: ${difficulty} (Easy / Medium / Hard)
+    Language: ${language} (Hindi / English / Hinglish)
+    Pattern Strategy: ${patternScope}
+
+    EXAM SETTER RULES:
+    1. OPTIONS: Each question MUST have exactly 4 options (A, B, C, D) with only ONE correct answer.
+    2. DISTRACTORS: Use strong distractors (wrong options must look realistic and trap the unprepared).
+    3. LANGUAGE: Use clear, formal, and exam-oriented language.
+    4. SUBJECT-SPECIFIC DEPTH:
+       - Reasoning: Include series, analogy, puzzles, and logical sequences.
+       - Mathematics: Ensure questions are solvable and involve RPSC-level logic (algebra, arithmetic, etc.).
+       - Science: Focus on concept-based and application-based questions.
+       - Rajasthan GK: Deep dive into history, culture, geography, and current administrative data of Rajasthan.
+       - Current Affairs: Must include latest events (2024-2026), govt schemes, awards, and major science/tech updates.
+    5. AVOID REPETITION: Every question must be unique.
+    6. TEACHER LOGIC: Provide a "Guruji" style insight (Hinglish) with mnemonics or logical shortcuts.
+    `;
+
+  const commonSchemaPart = `
+    STRICT JSON OUTPUT FORMAT:
+    The response must be a JSON array of objects. Each object must strictly follow this schema:
+    - 'question': The MCQ question text.
+    - 'options': Object with keys A, B, C, D.
+    - 'correctAnswer': "A", "B", "C", or "D".
+    - 'explanation': Expert factual explanation.
+    - 'teacherInsight': A clever "Guruji" tip or mnemonic in Hinglish.
+    - 'wrongOptionsAnalysis': A mapping of each incorrect option to a brief reason why it's a distractor.
+    - 'extraFacts': 2-3 additional facts related to the topic.
+    - 'videoUrl': YouTube search query for an educational video.
+    - 'imageUrl': Image search query for visual context.
+    - 'patternYear': Reference to the exam year or "Live update".
   `;
 
-  // URL Setup - Fixed model to gemini-1.5-flash
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-
   try {
-    const response = await axios.post(url, {
-      contents: [
-        {
-          parts: [
-            {
-              text: prompt
-            }
-          ]
-        }
-      ],
-      generationConfig: {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt + commonSchemaPart,
+      config: {
+        tools: isLiveQuiz ? [{ googleSearch: {} }] : [],
         responseMimeType: "application/json",
         responseSchema: {
-          type: "ARRAY",
+          type: Type.ARRAY,
           items: {
-            type: "OBJECT",
+            type: Type.OBJECT,
             properties: {
-              question: { type: "STRING" },
+              question: { type: Type.STRING },
               options: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
-                  A: { type: "STRING" },
-                  B: { type: "STRING" },
-                  C: { type: "STRING" },
-                  D: { type: "STRING" },
+                  A: { type: Type.STRING },
+                  B: { type: Type.STRING },
+                  C: { type: Type.STRING },
+                  D: { type: Type.STRING },
                 },
                 required: ["A", "B", "C", "D"],
               },
-              correctAnswer: { type: "STRING", enum: ["A", "B", "C", "D"] },
-              explanation: { type: "STRING" },
-              teacherInsight: { type: "STRING" },
+              correctAnswer: { type: Type.STRING, enum: ["A", "B", "C", "D"] },
+              explanation: { type: Type.STRING },
+              teacherInsight: { type: Type.STRING },
               wrongOptionsAnalysis: {
-                type: "OBJECT",
+                type: Type.OBJECT,
                 properties: {
-                  A: { type: "STRING" },
-                  B: { type: "STRING" },
-                  C: { type: "STRING" },
-                  D: { type: "STRING" },
+                  A: { type: Type.STRING },
+                  B: { type: Type.STRING },
+                  C: { type: Type.STRING },
+                  D: { type: Type.STRING },
                 },
                 required: ["A", "B", "C", "D"],
               },
               extraFacts: {
-                type: "ARRAY",
-                items: { type: "STRING" }
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
               },
-              videoUrl: { type: "STRING" },
-              imageUrl: { type: "STRING" },
-              patternYear: { type: "STRING" },
+              videoUrl: { type: Type.STRING },
+              imageUrl: { type: Type.STRING },
+              patternYear: { type: Type.STRING },
             },
             required: ["question", "options", "correctAnswer", "explanation", "teacherInsight", "wrongOptionsAnalysis", "extraFacts"],
-          }
-        }
-      }
-    }, {
-      headers: {
-        "Content-Type": "application/json",
-      }
+          },
+        },
+      },
     });
 
-    const data = response.data;
-    const textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!textOutput) {
-      console.error("Incompatible or empty response from Gemini API:", data);
-      throw new Error("No response content generated by Gemini.");
-    }
-
-    const parsedQuestions = JSON.parse(textOutput);
-    
-    if (!Array.isArray(parsedQuestions)) {
-      throw new Error("Gemini did not return an array of questions.");
-    }
-
-    const questions: Question[] = parsedQuestions.map((q: any, index: number) => ({
-      id: `q-${index}-${Date.now()}`,
-      question: q.question || "",
-      options: q.options || { A: "", B: "", C: "", D: "" },
-      correctAnswer: (q.correctAnswer && ["A", "B", "C", "D"].includes(q.correctAnswer)) ? q.correctAnswer : "A",
-      explanation: q.explanation || "",
-      teacherInsight: q.teacherInsight || "",
-      wrongOptionsAnalysis: q.wrongOptionsAnalysis || { A: "", B: "", C: "", D: "" },
-      extraFacts: Array.isArray(q.extraFacts) ? q.extraFacts : [],
-      videoUrl: q.videoUrl || "",
-      imageUrl: q.imageUrl || "",
-      patternYear: q.patternYear || "RPSC Standard"
+    const questions: Question[] = JSON.parse(response.text || '[]').map((q: any, index: number) => ({
+      ...q,
+      id: `q-${index}-${Date.now()}`
     }));
 
     return questions;
   } catch (error) {
     console.error("Error generating quiz:", error);
-    throw new Error("Failed to generate quiz questions. Please check your API key configuration and network connectivity and try again.");
+    throw new Error("Failed to generate quiz questions. Please try again.");
+  }
+}
+
+export interface RPSCNotification {
+  title: string;
+  date: string;
+  link: string;
+  type: 'EXAM' | 'RESULT' | 'NEWS';
+  description: string;
+}
+
+export async function fetchRPSCNotifications(): Promise<RPSCNotification[]> {
+  const ai = getAI();
+  const prompt = `
+    Persona: You are a reliable academic assistant.
+    Task: Use Google Search to find the 5 most recent and relevant notifications from the RPSC (Rajasthan Public Service Commission) official website or trusted news sources.
+    Requirements: Include upcoming exam dates for RAS, First Grade, Second Grade, and other major exams planned for 2024-2026.
+    
+    Output Format: A JSON array of objects with exactly these keys:
+    - title: Short descriptive title.
+    - date: String formatted date (e.g. "May 05, 2026").
+    - link: URL to the official notice or news source.
+    - type: One of "EXAM", "RESULT", or "NEWS".
+    - description: One-sentence summary.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json"
+      }
+    });
+
+    return JSON.parse(response.text || '[]');
+  } catch (error) {
+    console.error("Failed to fetch notifications:", error);
+    return [];
   }
 }

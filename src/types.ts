@@ -31,12 +31,14 @@ export type Subject =
   | 'English'
   | 'Reasoning'
   | 'Rajasthan Current Affairs'
-  | 'National Current Affairs';
+  | 'National Current Affairs'
+  | 'Daily Live Quiz';
 
 export type ExamPattern = '2012-2020' | '2021-Present';
 
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 export type Language = 'Hindi' | 'English' | 'Hinglish';
+export type QuizMode = 'instant' | 'exam';
 
 export interface QuizConfig {
   subject: Subject;
@@ -44,6 +46,7 @@ export interface QuizConfig {
   language: Language;
   questionCount: number;
   pattern: ExamPattern;
+  mode: QuizMode;
   topic?: string;
 }
 
