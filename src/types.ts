@@ -31,14 +31,12 @@ export type Subject =
   | 'English'
   | 'Reasoning'
   | 'Rajasthan Current Affairs'
-  | 'National Current Affairs'
-  | 'Daily Live Quiz';
+  | 'National Current Affairs';
 
 export type ExamPattern = '2012-2020' | '2021-Present';
 
 export type Difficulty = 'Easy' | 'Medium' | 'Hard';
 export type Language = 'Hindi' | 'English' | 'Hinglish';
-export type QuizMode = 'instant' | 'exam';
 
 export interface QuizConfig {
   subject: Subject;
@@ -46,7 +44,6 @@ export interface QuizConfig {
   language: Language;
   questionCount: number;
   pattern: ExamPattern;
-  mode: QuizMode;
   topic?: string;
 }
 
@@ -60,36 +57,8 @@ export interface QuizResult {
 
 export type ThemeType = 'geometric' | 'rajasthan';
 
-export interface LogEntry {
-  timestamp: string;
-  type: string;
-  message: string;
-  status: 'SUCCESS' | 'ERROR' | 'PENDING';
-}
-
-export interface StepStatus {
-  id: number;
-  label: string;
-  status: 'PENDING' | 'SUCCESS' | 'ERROR' | 'IN_PROGRESS';
-  error?: string;
-}
-
-export interface SystemStatus {
-  quizEngine: boolean;
-  apiKeyStatus: 'Connected' | 'Invalid Key' | 'Quota Exceeded' | 'Rate Limited' | 'Disconnected' | 'Network Error';
-  firebaseStatus: boolean;
-  apiLatency: number;
-  firebaseReadSpeed: number;
-  firebaseWriteSpeed: number;
-  flowSteps: StepStatus[];
-  collectionCounts: {
-    questions: number;
-    users: number;
-    subjects: number;
-    currentAffairs: number;
-    dbTotal: number;
-  };
-  questionAvailability: {
-    [key: string]: number;
-  };
+export interface User {
+  name: string;
+  email: string;
+  isAdmin?: boolean;
 }

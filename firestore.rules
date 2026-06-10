@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'name', 'email', 'createdAt'])
+        && data.keys().size() <= 5
+        && data.userId == request.auth.uid
+        && data.name is string && data.name.size() <= 100
+        && data.email is string && data.email.size() <= 200
+        && (data.get('lastActiveAt', request.time) is timestamp);
+    }
+
+    function isValidQuizResult(data) {
+      return data.keys().hasAll(['userId', 'subject', 'difficulty', 'score', 'totalQuestions', 'timeSpent', 'createdAt'])
+        && data.userId == request.auth.uid
+        && data.subject is string && data.subject.size() <= 100
+        && data.difficulty is string && data.difficulty.size() <= 50
+        && data.score is number
+        && data.totalQuestions is number
+        && data.timeSpent is number
+        && data.createdAt == request.time;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isSignedIn() && request.auth.uid == userId && isValidId(userId)
+        && isValidUser(incoming())
+        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'lastActiveAt'])
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().email == existing().email;
+
+      match /quizResults/{resultId} {
+        allow list: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+        allow read: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(resultId);
+        allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(resultId)
+          && isValidQuizResult(incoming());
+      }
+    }
+  }
+}

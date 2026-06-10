@@ -1,6 +1,8 @@
 {
-  "name": "Rajasthan Exam Academy",
-  "description": "A comprehensive RPSC exam preparation platform with AI-powered MCQs, subject modules, and performance tracking.",
+  "name": "RPSC AI MCQ Master",
+  "description": "AI-powered MCQ Quiz Generator for RPSC and competitive exams with adaptive learning and instant feedback.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

@@ -10,7 +10,6 @@ import {
   ChevronRight, 
   Timer, 
   RotateCcw, 
-  Flag,
   CheckCircle2, 
   XCircle, 
   Award, 
@@ -39,16 +38,16 @@ import {
   Menu,
   X
 } from 'lucide-react';
-import { generateQuizQuestions, fetchRPSCNotifications } from './services/geminiService';
-import { Question, QuizConfig, Subject, Difficulty, Language, ThemeType, User, ExamPattern, QuizMode } from './types';
-import { mockAuth } from './services/authService';
+import { generateQuizQuestions } from './services/geminiService';
+import { Question, QuizConfig, Subject, Difficulty, Language, ThemeType, User, ExamPattern } from './types';
+import { auth, db, logout } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { doc, setDoc, collection, serverTimestamp, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import IntroScreen from './components/IntroScreen';
 import AuthScreen from './components/AuthScreen';
 import RiverMap from './components/RiverMap';
-import RajasthanMap from './components/RajasthanMap';
+import SessionTimer, { formatTime } from './components/SessionTimer';
 import { useFeedback } from './hooks/useFeedback';
-import DiagnosticMonitor from './components/DiagnosticMonitor';
-import { monitorService } from './services/monitorService';
 
 export default function App() {
   const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS'>('LANDING');
@@ -59,9 +58,6 @@ export default function App() {
   const [rulesAccepted, setRulesAccepted] = useState(false);
   const [hasSavedQuiz, setHasSavedQuiz] = useState(false);
   
-  // Monitor state
-  const [isMonitorOpen, setIsMonitorOpen] = useState(false);
-  const [monitorTab, setMonitorTab] = useState<'HEALTH' | 'DIAGNOSTICS' | 'API' | 'FIREBASE'>('HEALTH');
   // Selection state
   const [config, setConfig] = useState<QuizConfig>({
     subject: 'Rajasthan GK',
@@ -69,7 +65,6 @@ export default function App() {
     language: 'English',
     questionCount: 10,
     pattern: '2021-Present',
-    mode: 'instant',
     topic: ''
   });
 
@@ -80,9 +75,8 @@ export default function App() {
   const [mistakes, setMistakes] = useState<Question[]>([]);
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [consecutiveCorrect, setConsecutiveCorrect] = useState(0);
-  const [quizTimer, setQuizTimer] = useState(0);
   const [isAnswered, setIsAnswered] = useState(false);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const quizTimerRef = useRef(0);
 
   // Gamification state
   const [streak, setStreak] = useState(0);
@@ -90,60 +84,8 @@ export default function App() {
   const [dailyDone, setDailyDone] = useState(false);
   const [isDailyChallenge, setIsDailyChallenge] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
-  const [isRajasthanMapOpen, setIsRajasthanMapOpen] = useState(false);
-  const [notifications, setNotifications] = useState<any[]>([]);
-  const [notifLoading, setNotifLoading] = useState(false);
-  const [reportedQuestions, setReportedQuestions] = useState<number[]>([]);
-
-  // Monitor Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey) {
-        if (e.key.toLowerCase() === 'h') {
-          setIsMonitorOpen(true);
-          setMonitorTab('HEALTH');
-        } else if (e.key.toLowerCase() === 'd') {
-          setIsMonitorOpen(true);
-          setMonitorTab('DIAGNOSTICS');
-        } else if (e.key.toLowerCase() === 'a') {
-          setIsMonitorOpen(true);
-          setMonitorTab('API');
-        } else if (e.key.toLowerCase() === 'f') {
-          setIsMonitorOpen(true);
-          setMonitorTab('FIREBASE');
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   const { feedback } = useFeedback();
-
-  // Fetch RPSC Notifications
-  const loadNotifications = useCallback(async () => {
-    setNotifLoading(true);
-    try {
-      const data = await fetchRPSCNotifications();
-      setNotifications(data);
-    } catch (error) {
-      console.error("Error loading notifications:", error);
-    } finally {
-      setNotifLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (screen === 'HOME') {
-      loadNotifications();
-    }
-  }, [screen, loadNotifications]);
-
-  // Check for saved quiz on mount
-  useEffect(() => {
-    const saved = localStorage.getItem('rpsc_current_quiz');
-    if (saved) setHasSavedQuiz(true);
-  }, [screen]);
 
   // Persist user and progress
   useEffect(() => {
@@ -175,7 +117,7 @@ export default function App() {
         questions,
         userAnswers,
         currentIndex,
-        quizTimer,
+        quizTimer: quizTimerRef.current,
         isAnswered,
         isReviewMode,
         isDailyChallenge
@@ -184,7 +126,7 @@ export default function App() {
     } else if (screen === 'RESULTS') {
       localStorage.removeItem('rpsc_current_quiz');
     }
-  }, [screen, userAnswers, currentIndex, quizTimer, isAnswered]);
+  }, [screen, userAnswers, currentIndex, isAnswered]);
 
   // Restore progress
   const restoreQuiz = () => {
@@ -195,7 +137,7 @@ export default function App() {
       setQuestions(data.questions);
       setUserAnswers(data.userAnswers);
       setCurrentIndex(data.currentIndex);
-      setQuizTimer(data.quizTimer);
+      quizTimerRef.current = data.quizTimer || 0;
       setIsAnswered(data.isAnswered);
       setIsReviewMode(data.isReviewMode);
       setIsDailyChallenge(data.isDailyChallenge);
@@ -205,58 +147,40 @@ export default function App() {
   };
 
   useEffect(() => {
-    const savedUser = mockAuth.getCurrentUser();
-    if (savedUser) {
-      setUser(savedUser);
-      monitorService.addLog('Auth', `Auto-logged in: ${savedUser.email}`, 'SUCCESS');
-    }
-
-    if (screen === 'LANDING') {
-      const timer = setTimeout(() => {
-        setScreen(savedUser ? 'HOME' : 'INTRO');
-      }, 2500);
-      return () => clearTimeout(timer);
-    }
-    monitorService.addLog('System', `Screen changed to: ${screen}`, 'SUCCESS');
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser({ name: firebaseUser.displayName || 'User', email: firebaseUser.email || '' });
+        if (screen === 'LANDING' || screen === 'INTRO' || screen === 'AUTH') {
+          setScreen('HOME');
+        }
+      } else {
+        setUser(null);
+        if (screen === 'LANDING') {
+          const timer = setTimeout(() => {
+            setScreen('INTRO');
+          }, 2500);
+          return () => clearTimeout(timer);
+        }
+      }
+    });
+    return () => unsubscribe();
   }, [screen]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     feedback('click');
-    mockAuth.logout();
+    await logout();
     setUser(null);
     setScreen('INTRO');
   };
 
   const toggleTheme = () => {
     feedback('royal');
-    setIsRoyalTransition(true);
-    setTimeout(() => setIsRoyalTransition(false), 1000);
     setTheme(prev => prev === 'geometric' ? 'rajasthan' : 'geometric');
   };
 
-  const [isRoyalTransition, setIsRoyalTransition] = useState(false);
-
-  useEffect(() => {
-    if (screen === 'QUIZ' && !loading) {
-      timerRef.current = setInterval(() => {
-        setQuizTimer(prev => prev + 1);
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [screen, loading]);
-
   const startSetup = (subject: Subject) => {
     feedback('click');
-    setConfig(prev => ({ 
-      ...prev, 
-      subject,
-      pattern: subject === 'Daily Live Quiz' ? '2021-Present' : prev.pattern,
-      mode: 'instant'
-    }));
+    setConfig(prev => ({ ...prev, subject }));
     setIsReviewMode(false);
     setIsDailyChallenge(false);
     setScreen('SETUP');
@@ -324,29 +248,46 @@ export default function App() {
   useEffect(() => {
     if (screen === 'RESULTS') {
       updateGamification(getScore(), questions.length);
+      
+      const saveToFirestore = async () => {
+        if (!auth.currentUser) return;
+        try {
+          const resultRef = doc(collection(db, `users/${auth.currentUser.uid}/quizResults`));
+          await setDoc(resultRef, {
+            userId: auth.currentUser.uid,
+            subject: config.subject,
+            difficulty: config.difficulty,
+            score: getScore(),
+            totalQuestions: questions.length,
+            timeSpent: quizTimerRef.current,
+            createdAt: serverTimestamp(),
+          });
+          
+          await setDoc(doc(db, `users/${auth.currentUser.uid}`), {
+            userId: auth.currentUser.uid,
+            name: user?.name || '',
+            email: user?.email || '',
+            createdAt: serverTimestamp(),
+          }, { merge: true });
+        } catch (error) {
+          console.error("Failed to save result to Firestore", error);
+        }
+      };
+      saveToFirestore();
     }
   }, [screen]);
 
   const startDailyChallenge = () => {
     if (dailyDone) return;
     setConfig({
-      subject: 'Daily Live Quiz',
+      subject: 'Rajasthan GK',
       difficulty: 'Hard',
       language: 'English',
       questionCount: 10,
-      pattern: '2021-Present',
-      mode: 'exam',
-      topic: 'Today\'s Top Headlines'
+      topic: 'Mixed Syllabus Rapid Fire'
     });
     setIsDailyChallenge(true);
     handleStartQuiz();
-  };
-
-  const reportQuestion = () => {
-    feedback('click');
-    if (!reportedQuestions.includes(currentIndex)) {
-      setReportedQuestions(prev => [...prev, currentIndex]);
-    }
   };
 
   const handleStartQuiz = () => {
@@ -363,7 +304,7 @@ export default function App() {
       setQuestions(generatedQuestions);
       setUserAnswers(new Array(generatedQuestions.length).fill(null));
       setCurrentIndex(0);
-      setQuizTimer(0);
+      quizTimerRef.current = 0;
       setIsAnswered(false);
     } catch (error) {
       alert("Error generating quiz. Please try again.");
@@ -374,28 +315,23 @@ export default function App() {
   };
 
   const handleSelectAnswer = (answer: string) => {
-    if (isAnswered && config.mode === 'instant') return;
+    if (isAnswered) return;
     
     const newAnswers = [...userAnswers];
     newAnswers[currentIndex] = answer;
     setUserAnswers(newAnswers);
-    
-    if (config.mode === 'instant') {
-      setIsAnswered(true);
-      if (answer === questions[currentIndex].correctAnswer) {
-        feedback('correct');
-        setConsecutiveCorrect(prev => prev + 1);
-      } else {
-        feedback('wrong');
-        setConsecutiveCorrect(0);
-        setMistakes(prev => {
-          if (prev.find(m => m.id === questions[currentIndex].id)) return prev;
-          return [...prev, questions[currentIndex]];
-        });
-      }
+    setIsAnswered(true);
+
+    if (answer === questions[currentIndex].correctAnswer) {
+      feedback('correct');
+      setConsecutiveCorrect(prev => prev + 1);
     } else {
-      // In Exam mode, we just move to next or allow changing answer until "Save & Next"
-      feedback('click');
+      feedback('wrong');
+      setConsecutiveCorrect(0);
+      setMistakes(prev => {
+        if (prev.find(m => m.id === questions[currentIndex].id)) return prev;
+        return [...prev, questions[currentIndex]];
+      });
     }
   };
 
@@ -428,12 +364,6 @@ export default function App() {
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
   const getScore = () => {
     return userAnswers.reduce((acc, ans, idx) => {
       return ans === questions[idx]?.correctAnswer ? acc + 1 : acc;
@@ -449,7 +379,6 @@ export default function App() {
   };
 
   const subjects: { name: Subject; icon: any; color: string; desc: string }[] = [
-    { name: 'Daily Live Quiz', icon: Activity, color: 'bg-indigo-600', desc: 'Real-time News: BBC, Google, Utkarsh' },
     { name: 'Rajasthan Current Affairs', icon: Zap, color: 'bg-amber-600', desc: 'Sports, Politics, Schemes 2026' },
     { name: 'National Current Affairs', icon: Sun, color: 'bg-rose-600', desc: 'National & Global Events' },
     { name: 'Rajasthan GK', icon: History, color: 'bg-blue-600', desc: 'Geography, History, Culture' },
@@ -463,23 +392,6 @@ export default function App() {
 
   return (
     <div className={`h-screen bg-page flex flex-col font-sans text-main overflow-hidden theme-${theme} relative`} data-theme={theme}>
-      <DiagnosticMonitor 
-        isOpen={isMonitorOpen} 
-        onClose={() => setIsMonitorOpen(false)} 
-        defaultTab={monitorTab}
-      />
-      {/* Royal Mode Transition Effect */}
-      <AnimatePresence>
-        {isRoyalTransition && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.4, 0] }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-amber-400 pointer-events-none mix-blend-overlay"
-          />
-        )}
-      </AnimatePresence>
-
       {/* Background Accents (Geometric Balance Mode) */}
       {theme === 'geometric' && (
         <div className="fixed inset-0 pointer-events-none overflow-hidden">
@@ -571,7 +483,13 @@ export default function App() {
                   {(screen === 'QUIZ' || screen === 'RESULTS') && (
                     <div className="flex flex-col items-end mr-1 md:mr-4">
                       <span className="hidden lg:block text-[9px] uppercase font-bold text-slate-400 tracking-widest whitespace-nowrap">Session Timer</span>
-                      <span className="text-xs md:text-xl font-mono font-bold text-primary italic leading-none">{formatTime(quizTimer)}</span>
+                      <span className="text-xs md:text-xl font-mono font-bold text-primary italic leading-none">
+                        {screen === 'QUIZ' ? (
+                          <SessionTimer isActive={screen === 'QUIZ' && !loading} initialTime={quizTimerRef.current} onTick={(t) => { quizTimerRef.current = t; }} />
+                        ) : (
+                          formatTime(quizTimerRef.current)
+                        )}
+                      </span>
                     </div>
                   )}
                   
@@ -581,21 +499,19 @@ export default function App() {
                       <span className="text-[10px] md:text-xs font-bold text-orange-500">{streak}</span>
                     </div>
 
-                    <motion.button 
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                    <button 
                       onClick={toggleTheme}
                       title="Switch Theme"
-                      className={`flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 rounded-full transition-all duration-700 shadow-lg border group relative overflow-hidden ${
+                      className={`flex items-center gap-2 px-3 py-2 md:px-5 md:py-2.5 rounded-full transition-all duration-700 shadow-lg border group relative overflow-hidden active:scale-95 ${
                         theme === 'rajasthan' 
-                          ? 'bg-rose-900 border-amber-500/50 text-amber-100 shadow-amber-900/20' 
+                          ? 'bg-rose-900/40 border-amber-500/50 text-amber-100 hover:bg-rose-900/60' 
                           : 'bg-white border-indigo-100 text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50'
                       }`}
                     >
-                      <Palette size={18} className={`transition-all duration-500 group-hover:rotate-[30deg] ${theme === 'rajasthan' ? 'text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]' : 'text-indigo-500'}`} />
-                      <span className={`text-[10px] md:text-sm font-bold transition-all duration-1000 whitespace-nowrap ${
+                      <Palette size={18} className={`transition-all duration-500 group-hover:rotate-[30deg] ${theme === 'rajasthan' ? 'text-amber-400' : 'text-indigo-500'}`} />
+                      <span className={`text-[10px] md:text-sm font-bold transition-all duration-700 whitespace-nowrap ${
                         theme === 'rajasthan' 
-                          ? 'font-serif italic text-amber-200 tracking-[0.2em] drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]' 
+                          ? 'font-serif italic text-amber-200 tracking-[0.15em] drop-shadow-sm' 
                           : 'font-display uppercase tracking-widest text-indigo-700'
                       }`}>
                         {theme === 'rajasthan' ? 'Royal Mode' : 'Switch Theme'}
@@ -603,13 +519,17 @@ export default function App() {
                       
                       {theme === 'rajasthan' && (
                         <motion.div 
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: [0.3, 0.6, 0.3] }}
-                          transition={{ repeat: Infinity, duration: 2 }}
-                          className="absolute inset-0 bg-gradient-to-r from-transparent via-amber-500/10 to-transparent skew-x-12 pointer-events-none"
-                        />
+                          initial={{ scale: 0, opacity: 0 }}
+                          animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
+                          transition={{ repeat: Infinity, duration: 3 }}
+                          className="absolute top-1 right-2 text-amber-300 pointer-events-none"
+                        >
+                          <Star size={8} fill="currentColor" />
+                        </motion.div>
                       )}
-                    </motion.button>
+                      
+                      <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity bg-white`}></div>
+                    </button>
 
                   <div className="hidden xs:block h-6 md:h-8 w-px bg-slate-200 mx-1 md:mx-2"></div>
 
@@ -837,112 +757,18 @@ export default function App() {
                       </div>
 
                     </div>
-
-                    {/* Interactive Map Explorer Card */}
-                    <div className="mb-8 p-6 bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-3xl shadow-xl shadow-indigo-200 relative overflow-hidden group">
-                      <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-20 -mt-20 blur-3xl transition-transform group-hover:scale-110"></div>
-                      <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
-                        <div className="text-center md:text-left">
-                          <h3 className="text-xl md:text-2xl font-black text-white flex items-center justify-center md:justify-start gap-3 font-display">
-                            <Compass className="text-amber-400 animate-pulse" /> 
-                            Rajasthan GK Explorer Map
-                          </h3>
-                          <p className="text-indigo-100 mt-2 text-sm md:text-base max-w-lg">
-                            Visually explore key historical forts, lakes, and administrative centers. Perfect for memorizing geographical locations for RAS & RPSC exams.
-                          </p>
-                        </div>
-                        <motion.button
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          onClick={() => {
-                            feedback('royal');
-                            setIsRajasthanMapOpen(true);
-                          }}
-                          className="px-8 py-3 bg-white text-indigo-700 font-black rounded-full shadow-lg hover:shadow-xl transition-all flex items-center gap-2 text-sm uppercase tracking-widest whitespace-nowrap"
-                        >
-                          Launch Map <ChevronRight size={18} />
-                        </motion.button>
-                      </div>
-                    </div>
-
-                    {/* Latest RPSC Notifications Section */}
-                    <div className="mb-10">
-                      <div className="flex items-center justify-between mb-4 px-2">
-                        <h3 className="text-sm md:text-base font-bold text-slate-800 flex items-center gap-2">
-                          <Zap size={18} className="text-amber-500 fill-amber-500" /> 
-                          Latest RPSC Notifications & Exam Dates
-                        </h3>
-                        <button 
-                          onClick={loadNotifications}
-                          className="text-[10px] font-bold text-primary uppercase tracking-widest hover:underline flex items-center gap-1"
-                          disabled={notifLoading}
-                        >
-                          <RotateCcw size={10} className={notifLoading ? 'animate-spin' : ''} /> Refresh
-                        </button>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {notifLoading ? (
-                          Array.from({ length: 2 }).map((_, i) => (
-                            <div key={i} className="h-24 bg-white border border-slate-200 rounded-2xl animate-pulse" />
-                          ))
-                        ) : notifications.length > 0 ? (
-                          notifications.map((notif, idx) => (
-                            <motion.a
-                              key={idx}
-                              href={notif.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.1 }}
-                              className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-primary/30 hover:shadow-md transition-all group flex flex-col justify-between"
-                            >
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className={`text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${
-                                    notif.type === 'EXAM' ? 'bg-indigo-100 text-indigo-700' : 
-                                    notif.type === 'RESULT' ? 'bg-green-100 text-green-700' : 
-                                    'bg-slate-100 text-slate-700'
-                                  }`}>
-                                    {notif.type}
-                                  </span>
-                                  <span className="text-[9px] font-bold text-slate-400">{notif.date}</span>
-                                </div>
-                                <h4 className="text-xs font-bold text-slate-800 group-hover:text-primary transition-colors line-clamp-1">{notif.title}</h4>
-                                <p className="text-[10px] text-slate-500 line-clamp-1 mt-1">{notif.description}</p>
-                              </div>
-                              <div className="flex items-center gap-1 mt-3 text-[10px] font-bold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                                View Official Notice <ChevronRight size={10} />
-                              </div>
-                            </motion.a>
-                          ))
-                        ) : (
-                          <div className="col-span-full p-8 text-center bg-white border border-dashed border-slate-200 rounded-2xl">
-                            <p className="text-xs text-slate-400">Failed to load real-time notifications. Try refreshing.</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {subjects.map((sub, idx) => (
                           <motion.button
                             key={sub.name}
                             whileHover={{ y: -4, shadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
                             onClick={() => startSetup(sub.name)}
-                            className={`p-6 border text-left transition-all group relative overflow-hidden ${
+                            className={`p-6 border text-left transition-all group ${
                               theme === 'rajasthan' 
                                 ? 'bg-white rounded-3xl border-orange-200 shadow-md shadow-orange-100 hover:shadow-xl' 
                                 : 'bg-white border-slate-200'
                             }`}
                           >
-                            {sub.name === 'Daily Live Quiz' && (
-                              <div className="absolute top-3 right-3 flex items-center gap-1 bg-red-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full animate-pulse z-10">
-                                <div className="w-1 h-1 bg-white rounded-full"></div>
-                                LIVE
-                              </div>
-                            )}
                             <div className={`w-10 h-10 ${
                               theme === 'rajasthan' ? 'bg-rose-800' : (sub.color.includes('blue') ? 'bg-primary' : sub.color)
                             } text-white flex items-center justify-center rounded-sm mb-4 group-hover:scale-110 transition-transform shadow-sm`}>
@@ -1027,30 +853,6 @@ export default function App() {
                                  </button>
                                ))}
                              </div>
-                          </div>
-
-                          <div className="group">
-                              <label className="block text-[10px] md:text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">Quiz Mode</label>
-                              <div className="grid grid-cols-2 gap-2">
-                                {(['instant', 'exam'] as QuizMode[]).map(m => (
-                                  <button
-                                    key={m}
-                                    onClick={() => setConfig({ ...config, mode: m })}
-                                    className={`py-2.5 md:py-3 border text-[10px] md:text-xs font-bold transition-all ${
-                                      config.mode === m 
-                                        ? 'border-primary bg-primary text-white shadow-md' 
-                                        : 'border-slate-200 text-slate-500 hover:border-primary/20'
-                                    }`}
-                                  >
-                                    {m === 'instant' ? 'LEARNING (INSTANT)' : 'CHALLENGE (EXAM)'}
-                                  </button>
-                                ))}
-                              </div>
-                              <p className="text-[10px] text-slate-400 mt-2 italic whitespace-normal leading-tight">
-                                {config.mode === 'instant' 
-                                  ? '* In Learning mode, you see answers and Guruji\'s insights immediately after each question.' 
-                                  : '* In Challenge mode, you see the result and full analysis only after completing the entire quiz.'}
-                              </p>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8">
@@ -1206,17 +1008,11 @@ export default function App() {
                   {questions[currentIndex] && Object.entries(questions[currentIndex].options).map(([key, value]) => {
                     const isCorrect = key === questions[currentIndex].correctAnswer;
                     const isSelected = key === userAnswers[currentIndex];
-                    const showResults = isAnswered && config.mode === 'instant';
                     
                     let btnClass = "border-slate-200 bg-white hover:border-primary shadow-sm hover:shadow-md";
                     let circleClass = "border-slate-200 text-slate-400 group-hover:bg-primary group-hover:text-white group-hover:border-primary";
 
-                    if (isSelected && config.mode === 'exam') {
-                      btnClass = "border-primary bg-indigo-50 shadow-md ring-2 ring-primary/20";
-                      circleClass = "bg-primary text-white border-primary";
-                    }
-
-                    if (showResults) {
+                    if (isAnswered) {
                       if (isCorrect) {
                         btnClass = "border-primary bg-primary/5 shadow-lg pointer-events-none ring-2 ring-primary/20";
                         circleClass = "bg-primary text-white border-primary scale-110";
@@ -1231,8 +1027,8 @@ export default function App() {
                     return (
                       <motion.button
                         key={key}
-                        whileHover={!showResults ? { y: -4, scale: 1.01 } : {}}
-                        whileTap={!showResults ? { scale: 0.98 } : {}}
+                        whileHover={!isAnswered ? { y: -4, scale: 1.01 } : {}}
+                        whileTap={!isAnswered ? { scale: 0.98 } : {}}
                         onClick={() => handleSelectAnswer(key)}
                         className={`flex items-center gap-5 p-5 md:p-6 border transition-all text-left group relative min-h-[80px] ${
                           theme === 'rajasthan' ? 'rounded-3xl' : 'rounded-2xl'
@@ -1241,8 +1037,8 @@ export default function App() {
                         <span className={`w-10 h-10 md:w-12 md:h-12 shrink-0 rounded-xl border-2 flex items-center justify-center font-bold text-lg transition-all ${circleClass}`}>
                           {key}
                         </span>
-                        <span className={`text-base md:text-lg flex-1 leading-tight ${isSelected && !showResults ? 'font-bold' : 'font-medium'}`}>{value}</span>
-                        {showResults && isCorrect && (
+                        <span className={`text-base md:text-lg flex-1 leading-tight ${isSelected && !isAnswered ? 'font-bold' : 'font-medium'}`}>{value}</span>
+                        {isAnswered && isCorrect && (
                           <motion.div 
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
@@ -1251,7 +1047,7 @@ export default function App() {
                             <CheckCircle2 className="text-primary" size={24} />
                           </motion.div>
                         )}
-                        {showResults && isSelected && !isCorrect && (
+                        {isAnswered && isSelected && !isCorrect && (
                           <motion.div 
                             initial={{ scale: 0 }}
                             animate={{ scale: 1 }}
@@ -1274,17 +1070,6 @@ export default function App() {
                     >
                       <ChevronLeft size={14} /> Previous
                     </button>
-                    <button 
-                      onClick={reportQuestion}
-                      className={`touch-target flex items-center gap-1 font-bold uppercase text-[10px] tracking-widest transition-all ${
-                        reportedQuestions.includes(currentIndex) 
-                          ? 'text-red-500' 
-                          : 'text-slate-400 hover:text-slate-600'
-                      }`}
-                    >
-                      <Flag size={14} className={reportedQuestions.includes(currentIndex) ? 'fill-red-500' : ''} />
-                      {reportedQuestions.includes(currentIndex) ? 'Reported' : 'Report'}
-                    </button>
                     {!isAnswered && (
                       <button 
                         onClick={skipQuestion}
@@ -1295,7 +1080,7 @@ export default function App() {
                     )}
                   </div>
                   <div className="flex gap-4">
-                     {((config.mode === 'instant' ? isAnswered : true) && userAnswers[currentIndex] !== null) && questions[currentIndex]?.question.toLowerCase().includes('ganga') && (
+                     {isAnswered && questions[currentIndex]?.question.toLowerCase().includes('ganga') && (
                         <button 
                           onClick={() => {
                             feedback('click');
@@ -1307,17 +1092,12 @@ export default function App() {
                         </button>
                       )}
                      <button 
-                       onClick={() => {
-                         if (config.mode === 'exam' && !isAnswered) {
-                           setIsAnswered(true); 
-                         }
-                         nextQuestion();
-                       }}
+                       onClick={nextQuestion}
                        className={`touch-target px-8 text-white font-bold rounded shadow-lg transition-all uppercase text-[11px] tracking-widest flex items-center gap-2 ${
-                         (isAnswered || userAnswers[currentIndex] !== null) ? 'bg-primary shadow-primary/20 brightness-110' : 'bg-slate-400 opacity-60'
+                         isAnswered ? 'bg-primary shadow-primary/20 brightness-110' : 'bg-slate-400 opacity-60'
                        }`}
                      >
-                       {currentIndex === questions.length - 1 ? 'Finish Exam' : ((isAnswered || userAnswers[currentIndex] !== null) ? 'Save & Next' : 'Select Answer')} <ChevronRight size={18} />
+                       {currentIndex === questions.length - 1 ? 'Finish Exam' : (isAnswered ? 'Save & Next' : 'Select Answer')} <ChevronRight size={18} />
                      </button>
                   </div>
                 </div>
@@ -1337,15 +1117,7 @@ export default function App() {
                       >
                         <ChevronLeft size={20} />
                       </button>
-                      <button 
-                        onClick={reportQuestion}
-                        className={`w-10 h-10 flex items-center justify-center bg-white border rounded-2xl active:scale-95 transition-all shadow-sm ${
-                          reportedQuestions.includes(currentIndex) ? 'border-red-200 text-red-500' : 'border-slate-200 text-slate-400'
-                        }`}
-                      >
-                        <Flag size={18} className={reportedQuestions.includes(currentIndex) ? 'fill-red-500' : ''} />
-                      </button>
-                      {((config.mode === 'instant' ? isAnswered : true) && userAnswers[currentIndex] !== null) && questions[currentIndex]?.question.toLowerCase().includes('ganga') && (
+                      {isAnswered && questions[currentIndex]?.question.toLowerCase().includes('ganga') && (
                          <button 
                            onClick={() => {
                              feedback('click');
@@ -1356,7 +1128,7 @@ export default function App() {
                            <Compass size={20} />
                          </button>
                        )}
-                      {!isAnswered && config.mode === 'instant' && (
+                      {!isAnswered && (
                         <button 
                           onClick={skipQuestion}
                           className="px-4 h-10 bg-white border border-slate-200 text-slate-400 font-bold rounded-2xl active:scale-95 transition-all text-[10px] uppercase tracking-widest"
@@ -1365,23 +1137,18 @@ export default function App() {
                         </button>
                       )}
                       <button 
-                        onClick={() => {
-                          if (config.mode === 'exam' && !isAnswered) {
-                            setIsAnswered(true); 
-                          }
-                          nextQuestion();
-                        }}
+                        onClick={nextQuestion}
                         className={`px-6 h-10 text-white font-bold rounded-2xl shadow-lg flex items-center gap-2 active:scale-95 transition-all text-[10px] uppercase tracking-widest ${
-                          (isAnswered || userAnswers[currentIndex] !== null) ? 'bg-primary' : 'bg-slate-400 opacity-60'
+                          isAnswered ? 'bg-primary' : 'bg-slate-400 opacity-60'
                         }`}
                       >
-                        {currentIndex === questions.length - 1 ? 'Finish' : ((isAnswered || userAnswers[currentIndex] !== null) ? 'Save' : 'Next')}
+                        {currentIndex === questions.length - 1 ? 'Finish' : (isAnswered ? 'Save' : 'Next')}
                         <ChevronRight size={16} />
                       </button>
                    </div>
                 </div>
 
-                          {isAnswered && config.mode === 'instant' && questions[currentIndex] && (
+                          {isAnswered && questions[currentIndex] && (
                             <motion.div
                               initial={{ opacity: 0, y: 10 }}
                               animate={{ opacity: 1, y: 0 }}
@@ -1564,7 +1331,7 @@ export default function App() {
                           <div className="flex items-center gap-4">
                              <Timer className="text-slate-300" size={24} />
                              <div>
-                                <span className="text-2xl font-mono font-bold text-main">{formatTime(quizTimer)}</span>
+                                <span className="text-2xl font-mono font-bold text-main">{formatTime(quizTimerRef.current)}</span>
                                 <p className="text-[9px] text-slate-400 uppercase font-bold tracking-tighter">Total Duration</p>
                              </div>
                           </div>
@@ -1626,7 +1393,7 @@ export default function App() {
                                    <div className="w-1.5 h-1.5 rounded-full bg-primary group-hover:scale-150 transition-transform"></div>
                                    <span className="text-sm font-bold text-slate-700">Processing Pace</span>
                                 </div>
-                                <span className="text-sm font-mono font-bold text-main">{Math.round(quizTimer / questions.length)}s per item</span>
+                                <span className="text-sm font-mono font-bold text-main">{Math.round(quizTimerRef.current / questions.length)}s per item</span>
                              </div>
                              <div className="flex items-center justify-between group">
                                 <div className="flex items-center gap-3">
@@ -1652,77 +1419,6 @@ export default function App() {
                               </button>
                            </div>
                         </div>
-                      </div>
-
-                      {/* Detailed Answer Key (Exam Analysis) */}
-                      <div className="mt-12">
-                         <div className="flex items-center justify-between mb-6">
-                            <h3 className="text-xl font-display font-bold italic text-main tracking-tight flex items-center gap-3">
-                               <Info size={24} className="text-primary text-main" /> विकल्प एवं सटीक विश्लेषण <span className="text-primary">(Detailed Analysis)</span>
-                            </h3>
-                            <div className="flex gap-2">
-                               <span className="px-3 py-1 bg-green-50 text-green-600 text-[10px] font-bold rounded-full border border-green-200">Correct: {getScore()}</span>
-                               <span className="px-3 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded-full border border-red-200">Wrong: {getIncorrectCount()}</span>
-                            </div>
-                         </div>
-                         
-                         <div className="space-y-6">
-                            {questions.map((q, idx) => (
-                              <div key={q.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                                 <div className="p-5 md:p-6 border-b border-slate-50">
-                                    <div className="flex items-start gap-4">
-                                       <span className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-500 text-sm shrink-0">
-                                          {idx + 1}
-                                       </span>
-                                       <div className="flex-1">
-                                          <h4 className="text-base md:text-lg font-bold text-main italic mb-4 leading-snug">
-                                             {q.question}
-                                          </h4>
-                                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                             {Object.entries(q.options).map(([key, val]) => {
-                                               const isCorrect = key === q.correctAnswer;
-                                               const isSelected = key === userAnswers[idx];
-                                               
-                                               let statusClass = "border-slate-100 bg-slate-50 text-slate-600";
-                                               if (isCorrect) statusClass = "border-green-200 bg-green-50 text-green-700 font-bold ring-1 ring-green-100";
-                                               if (isSelected && !isCorrect) statusClass = "border-red-200 bg-red-50 text-red-700 font-bold ring-1 ring-red-100";
-
-                                               return (
-                                                 <div key={key} className={`flex items-center gap-3 p-3 border rounded-xl text-xs transition-all ${statusClass}`}>
-                                                    <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold shrink-0 ${isCorrect ? 'bg-green-500 text-white' : (isSelected ? 'bg-red-500 text-white' : 'bg-slate-200 text-slate-400')}`}>
-                                                       {key}
-                                                    </span>
-                                                    <span className="flex-1">{val}</span>
-                                                    {isCorrect && <CheckCircle2 size={14} className="text-green-500" />}
-                                                    {isSelected && !isCorrect && <XCircle size={14} className="text-red-500" />}
-                                                 </div>
-                                               );
-                                             })}
-                                          </div>
-                                       </div>
-                                    </div>
-                                 </div>
-                                 <div className="p-6 bg-slate-50/50 flex flex-col md:flex-row gap-6">
-                                    <div className="flex-1">
-                                       <div className="text-[10px] text-amber-600 font-bold uppercase tracking-widest mb-2 flex items-center gap-1">
-                                          <BrainCircuit size={14} /> Guruji's Trick
-                                       </div>
-                                       <p className="text-xs md:text-sm text-slate-700 leading-relaxed font-medium italic">
-                                          {q.teacherInsight}
-                                       </p>
-                                    </div>
-                                    <div className="flex-1 border-t md:border-t-0 md:border-l border-slate-200 pt-4 md:pt-0 md:pl-6">
-                                       <div className="text-[10px] text-primary font-bold uppercase tracking-widest mb-2 flex items-center gap-1">
-                                          <Info size={12} /> Expert Explanation
-                                       </div>
-                                       <p className="text-[11px] md:text-xs text-slate-500 leading-relaxed">
-                                          {q.explanation}
-                                       </p>
-                                    </div>
-                                 </div>
-                              </div>
-                            ))}
-                         </div>
                       </div>
                     </motion.div>
                   )}
@@ -1775,7 +1471,7 @@ export default function App() {
             <footer className="h-10 bg-brand-bg text-slate-500 text-[10px] uppercase tracking-[0.2em] flex items-center justify-between px-4 md:px-8 shrink-0">
               <span className="flex items-center gap-2">AI Engine <span className="hidden xs:inline">v2.4</span> <span className="opacity-30">|</span> <span className="text-primary italic font-bold">RPSC Optimized</span></span>
               <div className="flex gap-6 items-center">
-                <span className="hidden md:inline">ClickCraft v1.0 <span className="opacity-30">|</span> Session ID: AIQ-2024-{quizTimer}</span>
+                <span className="hidden md:inline">ClickCraft v1.0 <span className="opacity-30">|</span> Session ID: AIQ-2024-{quizTimerRef.current}</span>
                 <span className="flex items-center gap-1.5 text-primary"><div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></div> <ShieldCheck size={12} /> <span className="hidden xs:inline">Secure Portal</span></span>
               </div>
             </footer>
@@ -1783,9 +1479,6 @@ export default function App() {
             <AnimatePresence>
               {isMapOpen && (
                 <RiverMap onClose={() => setIsMapOpen(false)} feedback={feedback} />
-              )}
-              {isRajasthanMapOpen && (
-                <RajasthanMap onClose={() => setIsRajasthanMapOpen(false)} />
               )}
             </AnimatePresence>
           </motion.div>

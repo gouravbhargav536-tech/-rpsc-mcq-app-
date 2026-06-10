@@ -1,62 +1,42 @@
 {
   "entities": {
-    "Subject": {
-      "title": "Subject",
-      "description": "An academic subject for RPSC exam preparation",
+    "User": {
+      "title": "User",
+      "description": "User profile data",
       "type": "object",
       "properties": {
+        "userId": { "type": "string" },
         "name": { "type": "string" },
-        "description": { "type": "string" }
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActiveAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["name"]
+      "required": ["userId", "name", "email", "createdAt"]
     },
-    "Question": {
-      "title": "Question",
-      "description": "A Multiple Choice Question",
-      "type": "object",
-      "properties": {
-        "subject": { "type": "string" },
-        "question": { "type": "string" },
-        "options": {
-          "type": "object",
-          "properties": {
-            "A": { "type": "string" },
-            "B": { "type": "string" },
-            "C": { "type": "string" },
-            "D": { "type": "string" }
-          }
-        },
-        "correctAnswer": { "type": "string" },
-        "explanation": { "type": "string" },
-        "language": { "type": "string" }
-      },
-      "required": ["subject", "question", "options", "correctAnswer", "language"]
-    },
-    "Attempt": {
-      "title": "Attempt",
-      "description": "A user's quiz attempt",
+    "QuizResult": {
+      "title": "QuizResult",
+      "description": "Result of a completed quiz",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
         "subject": { "type": "string" },
+        "difficulty": { "type": "string" },
         "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "timeSpent": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "subject", "score", "createdAt"]
+      "required": ["userId", "subject", "difficulty", "score", "totalQuestions", "timeSpent", "createdAt"]
     }
   },
   "firestore": {
-    "/subjects/{subjectId}": {
-      "schema": "Subject",
-      "description": "Collection of all subjects"
+    "users/{userId}": {
+      "schema": "User",
+      "description": "Stores user profile data"
     },
-    "/questions/{questionId}": {
-      "schema": "Question",
-      "description": "Collection of all questions"
-    },
-    "/attempts/{attemptId}": {
-      "schema": "Attempt",
-      "description": "Collection of user quiz attempts"
+    "users/{userId}/quizResults/{resultId}": {
+      "schema": "QuizResult",
+      "description": "Stores quiz results for a user"
     }
   }
 }

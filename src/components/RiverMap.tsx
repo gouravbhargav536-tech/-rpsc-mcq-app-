@@ -16,22 +16,19 @@ import {
 } from 'lucide-react';
 
 // Animation logic moved to custom HTML icons
-const createCustomIcon = (isSelected: boolean, _type: string) => {
+const createCustomIcon = (isSelected: boolean, type: string) => {
   return L.divIcon({
     className: 'custom-marker',
     html: `
       <div class="relative flex items-center justify-center">
-        ${isSelected ? `
-          <div class="absolute w-12 h-12 bg-primary/30 rounded-full animate-pulse blur-sm"></div>
-          <div class="absolute w-8 h-8 bg-primary/20 rounded-full animate-ping opacity-20"></div>
-        ` : ''}
-        <div class="relative w-8 h-8 ${isSelected ? 'bg-primary scale-110' : 'bg-white'} border-2 border-primary rounded-xl shadow-lg flex items-center justify-center transition-all duration-700">
-          <div class="w-2 h-2 bg-primary rounded-full ${isSelected ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]' : ''} transition-all duration-500"></div>
+        <div class="absolute w-10 h-10 bg-primary/20 rounded-full animate-ping ${isSelected ? 'opacity-100' : 'opacity-0'}"></div>
+        <div class="relative w-8 h-8 ${isSelected ? 'bg-primary scale-125' : 'bg-white'} border-2 border-primary rounded-xl shadow-lg flex items-center justify-center transition-all duration-500">
+          <div class="w-1.5 h-1.5 bg-primary rounded-full ${isSelected ? 'bg-white' : ''}"></div>
         </div>
       </div>
     `,
-    iconSize: [48, 48],
-    iconAnchor: [24, 24],
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
   });
 };
 
