@@ -60,8 +60,36 @@ export interface QuizResult {
 
 export type ThemeType = 'geometric' | 'rajasthan';
 
-export interface User {
-  name: string;
-  email: string;
-  isAdmin?: boolean;
+export interface LogEntry {
+  timestamp: string;
+  type: string;
+  message: string;
+  status: 'SUCCESS' | 'ERROR' | 'PENDING';
+}
+
+export interface StepStatus {
+  id: number;
+  label: string;
+  status: 'PENDING' | 'SUCCESS' | 'ERROR' | 'IN_PROGRESS';
+  error?: string;
+}
+
+export interface SystemStatus {
+  quizEngine: boolean;
+  apiKeyStatus: 'Connected' | 'Invalid Key' | 'Quota Exceeded' | 'Rate Limited' | 'Disconnected' | 'Network Error';
+  firebaseStatus: boolean;
+  apiLatency: number;
+  firebaseReadSpeed: number;
+  firebaseWriteSpeed: number;
+  flowSteps: StepStatus[];
+  collectionCounts: {
+    questions: number;
+    users: number;
+    subjects: number;
+    currentAffairs: number;
+    dbTotal: number;
+  };
+  questionAvailability: {
+    [key: string]: number;
+  };
 }

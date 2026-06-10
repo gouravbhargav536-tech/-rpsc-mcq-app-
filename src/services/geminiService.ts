@@ -1,31 +1,52 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Question, QuizConfig } from "../types";
+import { monitorService } from "./monitorService";
 
 let aiInstance: GoogleGenAI | null = null;
 
 function getAI(): GoogleGenAI {
+  const start = Date.now();
   if (!aiInstance) {
     if (!process.env.GEMINI_API_KEY) {
+      monitorService.addLog('API', 'GEMINI_API_KEY missing', 'ERROR');
+      monitorService.updateStatus({ apiKeyStatus: 'Disconnected' });
       throw new Error("GEMINI_API_KEY is not defined in the environment.");
     }
     aiInstance = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    monitorService.updateStatus({ apiKeyStatus: 'Connected' });
   }
   return aiInstance;
 }
 
 export async function generateQuizQuestions(config: QuizConfig): Promise<Question[]> {
-  const { subject, difficulty, language, questionCount, topic, pattern } = config;
-  const ai = getAI();
-
-  const isCurrentAffairs = subject === 'Rajasthan Current Affairs' || subject === 'National Current Affairs' || subject === 'Daily Live Quiz';
-  const isLiveQuiz = subject === 'Daily Live Quiz';
+  const startTime = Date.now();
+  monitorService.resetSteps();
   
-  const patternScope = pattern === '2012-2020' 
-    ? 'Old Pattern (2012–2020): Direct factual questions, simple recall-based.' 
-    : 'New Pattern (2021–2026): Statement-based, confusing options, analytical, modern exam style.';
+  // Step 1: Check Firebase (Mocked for now since not fully integrated in Quiz flow)
+  monitorService.updateStep(1, { status: 'IN_PROGRESS' });
+  monitorService.reportStep(1, 'Check Firebase', true);
+  
+  // Step 2: Check Cache
+  monitorService.updateStep(2, { status: 'IN_PROGRESS' });
+  monitorService.reportStep(2, 'Check Cache', false, 'Cache Miss - Proceeding to AI');
 
-  const prompt = isLiveQuiz 
-    ? `
+  const { subject, difficulty, language, questionCount, topic, pattern } = config;
+  
+  try {
+    // Step 3: Check AI API
+    monitorService.updateStep(3, { status: 'IN_PROGRESS' });
+    const ai = getAI();
+    monitorService.reportStep(3, 'Check AI API', true);
+
+    const isCurrentAffairs = subject === 'Rajasthan Current Affairs' || subject === 'National Current Affairs' || subject === 'Daily Live Quiz';
+    const isLiveQuiz = subject === 'Daily Live Quiz';
+    
+    const patternScope = pattern === '2012-2020' 
+      ? 'Old Pattern (2012–2020): Direct factual questions, simple recall-based.' 
+      : 'New Pattern (2021–2026): Statement-based, confusing options, analytical, modern exam style.';
+
+    const prompt = isLiveQuiz 
+      ? `
     Persona: You are a real-time Current Affairs analyst.
     Task: Search for today's top headlines from Google News, BBC News, and major Indian sources (like Utkarsh classes updates if available).
     Number of Questions: ${questionCount}
@@ -38,7 +59,7 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
     4. VARIETY: Mix sports, politics, awards, and major global events.
     5. QUALITY: Ensure strict factual accuracy and clear single-choice options.
     `
-    : `
+      : `
     Persona: You are an expert RPSC exam paper setter and AI tutor. Your mission is to generate ${questionCount} high-quality MCQs that strictly follow the RPSC exam pattern.
     Subject: ${subject}
     ${topic ? `Focus Topic: ${topic}` : ''}
@@ -60,7 +81,7 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
     6. TEACHER LOGIC: Provide a "Guruji" style insight (Hinglish) with mnemonics or logical shortcuts.
     `;
 
-  const commonSchemaPart = `
+    const commonSchemaPart = `
     STRICT JSON OUTPUT FORMAT:
     The response must be a JSON array of objects. Each object must strictly follow this schema:
     - 'question': The MCQ question text.
@@ -75,7 +96,12 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
     - 'patternYear': Reference to the exam year or "Live update".
   `;
 
-  try {
+    monitorService.updateStep(4, { status: 'IN_PROGRESS' });
+    
+    if (!navigator.onLine) {
+      throw new Error("No internet connection detected.");
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt + commonSchemaPart,
@@ -125,15 +151,37 @@ export async function generateQuizQuestions(config: QuizConfig): Promise<Questio
       },
     });
 
+    const latency = Date.now() - startTime;
+    monitorService.updateStatus({ apiLatency: latency });
+    monitorService.reportStep(4, 'Generate Quiz', true);
+    monitorService.addLog('AI', `Quiz generated in ${latency}ms`, 'SUCCESS');
+
     const questions: Question[] = JSON.parse(response.text || '[]').map((q: any, index: number) => ({
       ...q,
       id: `q-${index}-${Date.now()}`
     }));
 
     return questions;
-  } catch (error) {
+  } catch (error: any) {
+    monitorService.reportStep(4, 'Generate Quiz', false, error.message);
+    monitorService.addLog('AI', error.message, 'ERROR');
+    
+    const errMsg = error.message?.toLowerCase() || '';
+    
+    if (!navigator.onLine || errMsg.includes('fetch') || errMsg.includes('network') || errMsg.includes('connection')) {
+      monitorService.updateStatus({ apiKeyStatus: 'Network Error' });
+    } else if (errMsg.includes('429') || errMsg.includes('rate limit')) {
+      monitorService.updateStatus({ apiKeyStatus: 'Rate Limited' });
+    } else if (errMsg.includes('quota')) {
+      monitorService.updateStatus({ apiKeyStatus: 'Quota Exceeded' });
+    } else if (errMsg.includes('invalid') || errMsg.includes('key')) {
+      monitorService.updateStatus({ apiKeyStatus: 'Invalid Key' });
+    } else {
+      monitorService.updateStatus({ apiKeyStatus: 'Disconnected' });
+    }
+
     console.error("Error generating quiz:", error);
-    throw new Error("Failed to generate quiz questions. Please try again.");
+    throw new Error(error.message || "Failed to generate quiz questions. Please try again.");
   }
 }
 

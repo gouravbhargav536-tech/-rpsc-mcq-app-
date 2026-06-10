@@ -47,6 +47,8 @@ import AuthScreen from './components/AuthScreen';
 import RiverMap from './components/RiverMap';
 import RajasthanMap from './components/RajasthanMap';
 import { useFeedback } from './hooks/useFeedback';
+import DiagnosticMonitor from './components/DiagnosticMonitor';
+import { monitorService } from './services/monitorService';
 
 export default function App() {
   const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS'>('LANDING');
@@ -57,6 +59,9 @@ export default function App() {
   const [rulesAccepted, setRulesAccepted] = useState(false);
   const [hasSavedQuiz, setHasSavedQuiz] = useState(false);
   
+  // Monitor state
+  const [isMonitorOpen, setIsMonitorOpen] = useState(false);
+  const [monitorTab, setMonitorTab] = useState<'HEALTH' | 'DIAGNOSTICS' | 'API' | 'FIREBASE'>('HEALTH');
   // Selection state
   const [config, setConfig] = useState<QuizConfig>({
     subject: 'Rajasthan GK',
@@ -89,6 +94,29 @@ export default function App() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [reportedQuestions, setReportedQuestions] = useState<number[]>([]);
+
+  // Monitor Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey) {
+        if (e.key.toLowerCase() === 'h') {
+          setIsMonitorOpen(true);
+          setMonitorTab('HEALTH');
+        } else if (e.key.toLowerCase() === 'd') {
+          setIsMonitorOpen(true);
+          setMonitorTab('DIAGNOSTICS');
+        } else if (e.key.toLowerCase() === 'a') {
+          setIsMonitorOpen(true);
+          setMonitorTab('API');
+        } else if (e.key.toLowerCase() === 'f') {
+          setIsMonitorOpen(true);
+          setMonitorTab('FIREBASE');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const { feedback } = useFeedback();
 
@@ -178,7 +206,10 @@ export default function App() {
 
   useEffect(() => {
     const savedUser = mockAuth.getCurrentUser();
-    if (savedUser) setUser(savedUser);
+    if (savedUser) {
+      setUser(savedUser);
+      monitorService.addLog('Auth', `Auto-logged in: ${savedUser.email}`, 'SUCCESS');
+    }
 
     if (screen === 'LANDING') {
       const timer = setTimeout(() => {
@@ -186,6 +217,7 @@ export default function App() {
       }, 2500);
       return () => clearTimeout(timer);
     }
+    monitorService.addLog('System', `Screen changed to: ${screen}`, 'SUCCESS');
   }, [screen]);
 
   const handleLogout = () => {
@@ -431,6 +463,11 @@ export default function App() {
 
   return (
     <div className={`h-screen bg-page flex flex-col font-sans text-main overflow-hidden theme-${theme} relative`} data-theme={theme}>
+      <DiagnosticMonitor 
+        isOpen={isMonitorOpen} 
+        onClose={() => setIsMonitorOpen(false)} 
+        defaultTab={monitorTab}
+      />
       {/* Royal Mode Transition Effect */}
       <AnimatePresence>
         {isRoyalTransition && (
