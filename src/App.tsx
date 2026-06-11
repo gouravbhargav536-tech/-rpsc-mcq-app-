@@ -223,7 +223,7 @@ export default function App() {
     setHistoryResults([]);
   };
 
-  const fetchHistory = useCallback(async () => {
+  const syncHistory = useCallback(async () => {
     if (!auth.currentUser || user?.isGuest) return;
     setLoadingHistory(true);
     const path = `users/${auth.currentUser.uid}/quizResults`;
@@ -260,9 +260,9 @@ export default function App() {
 
   useEffect(() => {
     if (screen === 'HOME' && auth.currentUser) {
-      fetchHistory();
+      syncHistory();
     }
-  }, [screen, fetchHistory]);
+  }, [screen, syncHistory]);
 
   const toggleTheme = () => {
     feedback('royal');
@@ -913,7 +913,7 @@ export default function App() {
                                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Real-time sync from Firestore Infrastructure</p>
                                   </div>
                                   <button 
-                                    onClick={fetchHistory}
+                                    onClick={syncHistory}
                                     className="p-2 text-slate-400 hover:text-primary hover:bg-slate-50 rounded-full transition-all"
                                   >
                                      <RotateCcw size={18} className={loadingHistory ? 'animate-spin' : ''} />
