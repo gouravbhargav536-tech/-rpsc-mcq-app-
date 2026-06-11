@@ -49,6 +49,8 @@ import AuthScreen from './components/AuthScreen';
 import RiverMap from './components/RiverMap';
 import HistoryPanel, { FirestoreQuizResult } from './components/HistoryPanel';
 import SessionTimer, { formatTime } from './components/SessionTimer';
+import AdminMonitor from './pages/AdminMonitor';
+import { logSystemError } from './services/logger';
 import { useFeedback } from './hooks/useFeedback';
 
 export default function App() {
@@ -78,6 +80,7 @@ export default function App() {
   const [isReviewMode, setIsReviewMode] = useState(false);
   const [consecutiveCorrect, setConsecutiveCorrect] = useState(0);
   const [isAnswered, setIsAnswered] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const quizTimerRef = useRef(0);
 
   // Gamification state
@@ -91,6 +94,22 @@ export default function App() {
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const { feedback } = useFeedback();
+
+  // Route Handling
+  useEffect(() => {
+    if (window.location.pathname === '/admin-monitor') {
+      setScreen('ADMIN' as any);
+    }
+  }, []);
+
+  // Global Error Handler
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      logSystemError(event.message, event.error?.stack);
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
 
   // Persist user and progress
   useEffect(() => {
@@ -363,6 +382,15 @@ export default function App() {
             })),
             userAnswers: userAnswers
           });
+
+          // Also write to central quizzes for global monitoring
+          await setDoc(doc(db, 'quizzes', resultRef.id), {
+            userId: auth.currentUser.uid,
+            subject: config.subject,
+            score: getScore(),
+            total: questions.length,
+            timestamp: serverTimestamp()
+          });
           
           const userPath = `users/${auth.currentUser.uid}`;
           // Use { merge: true } but don't overwrite createdAt if it already exists
@@ -404,6 +432,7 @@ export default function App() {
     feedback('click');
     setLoading(true);
     setScreen('QUIZ');
+    setErrorMsg(null);
     try {
       const generatedQuestions = await generateQuizQuestions(config);
       if (!generatedQuestions || generatedQuestions.length === 0) {
@@ -416,7 +445,8 @@ export default function App() {
       setIsAnswered(false);
     } catch (error: any) {
       console.error("Quiz Gen Error:", error);
-      alert(`Error generating quiz: ${error.message || "Please try again."}`);
+      logSystemError(`Quiz Generation Failed: ${error.message}`, error.stack);
+      setErrorMsg(error.message || "Something went wrong while generating the quiz.");
       setScreen('SETUP');
     } finally {
       setLoading(false);
@@ -501,6 +531,37 @@ export default function App() {
 
   return (
     <div className={`h-screen bg-page flex flex-col font-sans text-main overflow-hidden theme-${theme} relative`} data-theme={theme}>
+      {screen === ('ADMIN' as any) ? (
+        <AdminMonitor />
+      ) : (
+        <>
+          <AnimatePresence>
+        {errorMsg && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
+          >
+            <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-red-100 dark:border-red-900/30">
+              <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Info className="w-8 h-8 text-red-500" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white text-center mb-3">Oops! Quiz Failure</h3>
+              <p className="text-slate-600 dark:text-slate-400 text-center text-sm leading-relaxed mb-8">
+                {errorMsg}
+              </p>
+              <button 
+                onClick={() => setErrorMsg(null)}
+                className="w-full bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-bold py-4 rounded-2xl hover:opacity-90 transition-all active:scale-95 shadow-lg"
+              >
+                Got it, Try Again
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
       {/* Background Accents (Geometric Balance Mode) */}
       {theme === 'geometric' && (
         <div className="fixed inset-0 pointer-events-none overflow-hidden">
@@ -1673,6 +1734,8 @@ export default function App() {
         )}
 
       </AnimatePresence>
+        </>
+      )}
     </div>
   );
 }

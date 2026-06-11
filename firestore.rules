@@ -1,57 +1,48 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Catch-all deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    function isSignedIn() { return request.auth != null; }
-    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
-
-    function isValidUser(data) {
-      let requiredKeys = ['userId', 'name', 'email'];
-      return data.keys().hasAll(requiredKeys)
-        && data.keys().size() <= 6
-        && data.userId == request.auth.uid
-        && data.name is string && data.name.size() <= 100
-        && data.email is string && data.email.size() <= 200
-        && (resource == null ? data.keys().hasAll(['createdAt']) : true);
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    function isValidQuizResult(data) {
-      return data.keys().hasAll(['userId', 'subject', 'difficulty', 'score', 'totalQuestions', 'timeSpent', 'createdAt', 'config', 'questions', 'userAnswers'])
-        && data.userId == request.auth.uid
-        && data.subject is string && data.subject.size() <= 100
-        && data.difficulty is string && data.difficulty.size() <= 50
-        && data.score is number
-        && data.totalQuestions is number
-        && data.timeSpent is number
-        && data.createdAt == request.time
-        && data.config is map
-        && data.questions is list
-        && data.userAnswers is map;
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Users collection
     match /users/{userId} {
-      allow read: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
-      allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId)
-        && isValidUser(incoming())
-        && incoming().createdAt == request.time;
-      allow update: if isSignedIn() && request.auth.uid == userId && isValidId(userId)
-        && isValidUser(incoming())
-        && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'lastActiveAt'])
-        && incoming().userId == existing().userId
-        && incoming().createdAt == existing().createdAt
-        && incoming().email == existing().email;
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId);
+    }
 
-      match /quizResults/{resultId} {
-        allow list: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
-        allow read: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(resultId);
-        allow create: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidId(resultId)
-          && isValidQuizResult(incoming());
-      }
+    // Quizzes collection
+    match /quizzes/{quizId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // System Errors - Only admin can read, but anyone (even unauth) might need to log?
+    // Actually, let's restrict write to the server-side proxy or authenticated users.
+    match /system_errors/{errorId} {
+      allow read: if isAdmin();
+      allow create: if true; // Allow logging even if not signed in (for auth errors)
+    }
+
+    // Admins collection - Read-only for admins themselves or purely internal
+    match /admins/{adminUid} {
+      allow read: if isSignedIn();
     }
   }
 }

@@ -2,41 +2,60 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "User profile data",
+      "description": "User profile with activity stats",
       "type": "object",
       "properties": {
-        "userId": { "type": "string" },
-        "name": { "type": "string" },
+        "uid": { "type": "string" },
         "email": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "lastActiveAt": { "type": "string", "format": "date-time" }
+        "displayName": { "type": "string" },
+        "isAdmin": { "type": "boolean" },
+        "lastLogin": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "name", "email", "createdAt"]
+      "required": ["uid", "email"]
     },
     "QuizResult": {
-      "title": "QuizResult",
-      "description": "Result of a completed quiz",
+      "title": "Quiz Result",
+      "description": "Historical quiz attempt record",
       "type": "object",
       "properties": {
         "userId": { "type": "string" },
         "subject": { "type": "string" },
-        "difficulty": { "type": "string" },
         "score": { "type": "number" },
-        "totalQuestions": { "type": "number" },
-        "timeSpent": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "total": { "type": "number" },
+        "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "subject", "difficulty", "score", "totalQuestions", "timeSpent", "createdAt"]
+      "required": ["userId", "subject", "score", "total", "timestamp"]
+    },
+    "SystemError": {
+      "title": "System Error",
+      "description": "Logged system error for monitoring",
+      "type": "object",
+      "properties": {
+        "message": { "type": "string" },
+        "stack": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
-    "users/{userId}": {
+    "/users/{userId}": {
       "schema": "User",
-      "description": "Stores user profile data"
+      "description": "User profile storage"
     },
-    "users/{userId}/quizResults/{resultId}": {
+    "/quizzes/{quizId}": {
       "schema": "QuizResult",
-      "description": "Stores quiz results for a user"
+      "description": "Global quiz results"
+    },
+    "/system_errors/{errorId}": {
+      "schema": "SystemError",
+      "description": "System error logs"
+    },
+    "/admins/{adminUid}": {
+      "schema": { "type": "object", "properties": { "email": { "type": "string" } } },
+      "description": "Trusted admin UIDs"
     }
   }
 }
