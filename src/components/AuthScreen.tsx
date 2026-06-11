@@ -13,18 +13,30 @@ interface AuthScreenProps {
 export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
   const [lang, setLang] = useState<'EN' | 'HI'>('EN');
   const [loading, setLoading] = useState(false);
+  const [guestName, setGuestName] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
   const { feedback } = useFeedback();
 
   const content = {
     EN: {
-      loginTitle: "Welcome",
+      loginTitle: "Exam Portal",
+      loginSubtitle: "Sign in to sync your RPSC progress",
       loginBtn: "Sign in with Google",
-      back: "Back"
+      guestBtn: "Start as Guest",
+      guestPlaceholder: "Enter full name (e.g., Sunil Kumar)",
+      back: "Back",
+      authHint: "Issues signing in? Try 'Guest Mode' or check if popups are blocked.",
+      or: "OR"
     },
     HI: {
-      loginTitle: "आपका स्वागत है",
+      loginTitle: "परीक्षा पोर्टल",
+      loginSubtitle: "अपनी RPSC प्रगति सिंक करने के लिए साइन इन करें",
       loginBtn: "Google के साथ साइन इन करें",
-      back: "पीछे"
+      guestBtn: "अतिथि के रूप में शुरू करें",
+      guestPlaceholder: "पूरा नाम दर्ज करें",
+      back: "पीछे",
+      authHint: "साइन इन करने में समस्या? 'अतिथि मोड' आज़माएं या पॉपअप की जांच करें।",
+      or: "या"
     }
   };
 
@@ -33,6 +45,7 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
   const handleGoogleLogin = async () => {
     feedback('click');
     setLoading(true);
+    setAuthError(null);
     try {
       const result = await loginWithGoogle();
       const user = {
@@ -41,13 +54,28 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
       };
       feedback('success');
       onSuccess(user);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       feedback('wrong');
-      alert("Authentication failed");
+      const msg = err.message || "Failed to reach Google. Check your connection or popup settings.";
+      setAuthError(msg);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleGuestLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!guestName.trim()) {
+      feedback('wrong');
+      return;
+    }
+    feedback('success');
+    onSuccess({
+      name: guestName.trim(),
+      email: 'guest@rpsc-practice.local',
+      isGuest: true
+    });
   };
 
   return (
@@ -78,22 +106,70 @@ export default function AuthScreen({ onSuccess, onBack }: AuthScreenProps) {
       <motion.div 
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 p-6 sm:p-10 shadow-2xl relative z-10 mt-12 sm:mt-0"
+        className="w-full max-w-md bg-white border border-slate-200 p-8 sm:p-12 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] relative z-10 mt-12 sm:mt-0 rounded-[2.5rem]"
       >
-        <div className="text-center mb-10">
-          <h2 className="text-3xl font-display italic text-main mb-2">
+        <div className="text-center mb-8">
+           <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mx-auto mb-6">
+              <Lock size={30} />
+           </div>
+          <h2 className="text-3xl font-display font-medium text-main mb-3">
             {curr.loginTitle}
           </h2>
-          <div className="h-1 w-12 bg-primary mx-auto"></div>
+          <p className="text-sm text-slate-500 font-sans tracking-wide">
+            {curr.loginSubtitle}
+          </p>
         </div>
 
-        <button
-          onClick={handleGoogleLogin}
-          disabled={loading}
-          className="w-full bg-slate-900 border border-white/10 text-white font-bold tracking-[0.2em] uppercase py-4 hover:bg-primary transition-all flex items-center justify-center gap-2 shadow-xl"
-        >
-          {loading ? <Loader2 className="animate-spin" size={20} /> : curr.loginBtn}
-        </button>
+        <div className="space-y-4">
+          <button
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="w-full bg-slate-900 border border-slate-800 text-white font-bold tracking-[0.1em] uppercase py-4 rounded-2xl hover:bg-primary transition-all flex items-center justify-center gap-3 shadow-lg active:scale-[0.98]"
+          >
+            {loading ? <Loader2 className="animate-spin" size={20} /> : (
+              <>
+                <img src="https://www.google.com/favicon.ico" className="w-4 h-4 grayscale invert brightness-200" alt="" />
+                {curr.loginBtn}
+              </>
+            )}
+          </button>
+
+          {authError && (
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-3 bg-red-50 border border-red-100 rounded-xl text-[11px] text-red-600 leading-relaxed text-center"
+            >
+              <strong>{authError}</strong>
+              <p className="mt-1 opacity-80">{curr.authHint}</p>
+            </motion.div>
+          )}
+
+          <div className="flex items-center gap-4 py-4">
+            <div className="flex-1 h-px bg-slate-100"></div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{curr.or}</span>
+            <div className="flex-1 h-px bg-slate-100"></div>
+          </div>
+
+          <form onSubmit={handleGuestLogin} className="space-y-4">
+            <div className="relative group">
+              <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary transition-colors" size={18} />
+              <input 
+                type="text" 
+                value={guestName}
+                onChange={(e) => setGuestName(e.target.value)}
+                placeholder={curr.guestPlaceholder}
+                className="w-full bg-slate-50 border border-slate-200 py-4 pl-12 pr-4 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-white border-2 border-slate-200 text-main font-bold tracking-[0.1em] uppercase py-4 rounded-2xl hover:border-primary hover:bg-slate-50 transition-all shadow-sm active:scale-[0.98]"
+            >
+              {curr.guestBtn}
+            </button>
+          </form>
+        </div>
       </motion.div>
     </div>
   );

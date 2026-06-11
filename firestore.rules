@@ -11,23 +11,27 @@ service cloud.firestore {
     function existing() { return resource.data; }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['userId', 'name', 'email', 'createdAt'])
-        && data.keys().size() <= 5
+      let requiredKeys = ['userId', 'name', 'email'];
+      return data.keys().hasAll(requiredKeys)
+        && data.keys().size() <= 6
         && data.userId == request.auth.uid
         && data.name is string && data.name.size() <= 100
         && data.email is string && data.email.size() <= 200
-        && (data.get('lastActiveAt', request.time) is timestamp);
+        && (resource == null ? data.keys().hasAll(['createdAt']) : true);
     }
 
     function isValidQuizResult(data) {
-      return data.keys().hasAll(['userId', 'subject', 'difficulty', 'score', 'totalQuestions', 'timeSpent', 'createdAt'])
+      return data.keys().hasAll(['userId', 'subject', 'difficulty', 'score', 'totalQuestions', 'timeSpent', 'createdAt', 'config', 'questions', 'userAnswers'])
         && data.userId == request.auth.uid
         && data.subject is string && data.subject.size() <= 100
         && data.difficulty is string && data.difficulty.size() <= 50
         && data.score is number
         && data.totalQuestions is number
         && data.timeSpent is number
-        && data.createdAt == request.time;
+        && data.createdAt == request.time
+        && data.config is map
+        && data.questions is list
+        && data.userAnswers is map;
     }
 
     match /users/{userId} {

@@ -36,16 +36,18 @@ import {
   Compass,
   User as UserIcon,
   Menu,
-  X
+  X,
+  TrendingUp
 } from 'lucide-react';
 import { generateQuizQuestions } from './services/geminiService';
 import { Question, QuizConfig, Subject, Difficulty, Language, ThemeType, User, ExamPattern } from './types';
 import { auth, db, logout } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, setDoc, collection, serverTimestamp, getDocs, query, orderBy, limit } from 'firebase/firestore';
+import { doc, setDoc, collection, serverTimestamp, getDocs, query, orderBy, limit, getDoc } from 'firebase/firestore';
 import IntroScreen from './components/IntroScreen';
 import AuthScreen from './components/AuthScreen';
 import RiverMap from './components/RiverMap';
+import HistoryPanel, { FirestoreQuizResult } from './components/HistoryPanel';
 import SessionTimer, { formatTime } from './components/SessionTimer';
 import { useFeedback } from './hooks/useFeedback';
 
@@ -84,6 +86,9 @@ export default function App() {
   const [dailyDone, setDailyDone] = useState(false);
   const [isDailyChallenge, setIsDailyChallenge] = useState(false);
   const [isMapOpen, setIsMapOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<'LIBRARY' | 'ACTIVITY'>('LIBRARY');
+  const [historyResults, setHistoryResults] = useState<FirestoreQuizResult[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const { feedback } = useFeedback();
 
@@ -129,6 +134,11 @@ export default function App() {
   }, [screen, userAnswers, currentIndex, isAnswered]);
 
   // Restore progress
+  useEffect(() => {
+    const saved = localStorage.getItem('rpsc_current_quiz');
+    setHasSavedQuiz(!!saved);
+  }, [screen]);
+
   const restoreQuiz = () => {
     const saved = localStorage.getItem('rpsc_current_quiz');
     if (saved) {
@@ -147,13 +157,52 @@ export default function App() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        setUser({ name: firebaseUser.displayName || 'User', email: firebaseUser.email || '' });
+        const u: User = { 
+          name: firebaseUser.displayName || 'User', 
+          email: firebaseUser.email || '',
+        };
+        setUser(u);
+
+        // Sync Profile
+        try {
+          const userRef = doc(db, 'users', firebaseUser.uid);
+          const userSnap = await getDoc(userRef);
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              userId: firebaseUser.uid,
+              name: u.name,
+              email: u.email,
+              createdAt: serverTimestamp(),
+              lastActiveAt: serverTimestamp(),
+            });
+          } else {
+            await setDoc(userRef, {
+              name: u.name,
+              lastActiveAt: serverTimestamp(),
+            }, { merge: true });
+          }
+        } catch (e) {
+          console.error("Profile sync failed", e);
+        }
+
         if (screen === 'LANDING' || screen === 'INTRO' || screen === 'AUTH') {
           setScreen('HOME');
         }
       } else {
+        const savedUser = localStorage.getItem('rpsc_user');
+        if (savedUser) {
+          const u = JSON.parse(savedUser);
+          if (u.isGuest) {
+            setUser(u);
+            if (screen === 'LANDING' || screen === 'INTRO' || screen === 'AUTH') {
+              setScreen('HOME');
+            }
+            return;
+          }
+        }
+
         setUser(null);
         if (screen === 'LANDING') {
           const timer = setTimeout(() => {
@@ -171,7 +220,49 @@ export default function App() {
     await logout();
     setUser(null);
     setScreen('INTRO');
+    setHistoryResults([]);
   };
+
+  const fetchHistory = useCallback(async () => {
+    if (!auth.currentUser || user?.isGuest) return;
+    setLoadingHistory(true);
+    const path = `users/${auth.currentUser.uid}/quizResults`;
+    try {
+      const q = query(
+        collection(db, path),
+        orderBy('createdAt', 'desc'),
+        limit(15)
+      );
+      const snapshot = await getDocs(q);
+      const results = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as FirestoreQuizResult[];
+      setHistoryResults(results);
+    } catch (error) {
+      handleFirestoreError(error, 'list', path);
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, [screen]);
+
+  // Firestore Error Handling
+  function handleFirestoreError(error: any, operation: string, path: string) {
+    const errorInfo = {
+      error: error.message || String(error),
+      operation,
+      path,
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email
+    };
+    console.error('Firestore Error Instance:', JSON.stringify(errorInfo));
+  }
+
+  useEffect(() => {
+    if (screen === 'HOME' && auth.currentUser) {
+      fetchHistory();
+    }
+  }, [screen, fetchHistory]);
 
   const toggleTheme = () => {
     feedback('royal');
@@ -250,9 +341,10 @@ export default function App() {
       updateGamification(getScore(), questions.length);
       
       const saveToFirestore = async () => {
-        if (!auth.currentUser) return;
+        if (!auth.currentUser || user?.isGuest) return;
+        const path = `users/${auth.currentUser.uid}/quizResults`;
         try {
-          const resultRef = doc(collection(db, `users/${auth.currentUser.uid}/quizResults`));
+          const resultRef = doc(collection(db, path));
           await setDoc(resultRef, {
             userId: auth.currentUser.uid,
             subject: config.subject,
@@ -261,16 +353,29 @@ export default function App() {
             totalQuestions: questions.length,
             timeSpent: quizTimerRef.current,
             createdAt: serverTimestamp(),
+            config: config,
+            questions: questions.map(q => ({
+              id: q.id,
+              question: q.question,
+              options: q.options,
+              correctAnswer: q.correctAnswer,
+              explanation: q.explanation
+            })),
+            userAnswers: userAnswers
           });
           
-          await setDoc(doc(db, `users/${auth.currentUser.uid}`), {
+          const userPath = `users/${auth.currentUser.uid}`;
+          // Use { merge: true } but don't overwrite createdAt if it already exists
+          // Rules verify createdAt immutability, so we just don't send it if it's an update
+          // However, we don't know for sure here, so we'll just send name/email/userId/lastActiveAt
+          await setDoc(doc(db, userPath), {
             userId: auth.currentUser.uid,
             name: user?.name || '',
             email: user?.email || '',
-            createdAt: serverTimestamp(),
+            lastActiveAt: serverTimestamp(),
           }, { merge: true });
         } catch (error) {
-          console.error("Failed to save result to Firestore", error);
+          handleFirestoreError(error, 'write', path);
         }
       };
       saveToFirestore();
@@ -641,146 +746,225 @@ export default function App() {
                       animate={{ opacity: 1, scale: 1 }}
                       className="max-w-4xl mx-auto w-full"
                     >
-                      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 md:mb-10 gap-4 md:gap-6">
+                      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 md:mb-12 gap-6 pb-2">
                         <div>
-                          <span className="text-[10px] md:text-[11px] font-bold text-slate-500 uppercase tracking-[0.2em]">Select Examination Subject</span>
-                          <h2 className="text-2xl md:text-4xl font-display mt-1 md:mt-2 text-main italic">RPSC <span className="text-primary">Practice Portal</span></h2>
+                          <p className="text-[10px] md:text-[11px] font-bold text-primary uppercase tracking-[0.5em] font-sans mb-3 md:mb-5 leading-none opacity-80">Intelligence Guided Examination</p>
+                          <h2 className="text-4xl md:text-7xl font-display font-medium text-main skew-x-[-1.5deg] tracking-tighter leading-[0.9]">RPSC <span className="text-primary not-italic font-bold">Practice</span></h2>
                         </div>
                         
-                        <div className="flex flex-wrap gap-3 md:gap-4 items-center">
-                          {streak > 0 && (
-                            <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 rounded-2xl shadow-sm">
-                              <span className="text-xl">🔥</span>
-                              <div className="flex flex-col">
-                                <span className="text-[10px] font-bold text-orange-400 uppercase tracking-tighter">Current Streak</span>
-                                <span className="text-sm font-bold text-orange-700 leading-none">{streak} Days</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {mistakes.length > 0 && (
-                            <button 
-                              onClick={startMistakeReview}
-                              className={`flex items-center gap-2 px-6 py-3 font-bold border-b-2 transition-all uppercase text-xs tracking-widest ${
-                                theme === 'rajasthan' 
-                                  ? 'bg-rose-800 text-white rounded-2xl border-rose-900 shadow-rose-900/20 shadow-lg' 
-                                  : 'bg-accent text-white rounded-sm border-accent/40 shadow-accent/20 shadow-lg'
-                              } hover:brightness-110`}
-                            >
-                              <BrainCircuit size={16} /> Review Mistakes ({mistakes.length})
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Gamification Row */}
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
-                        {/* Daily Challenge Card */}
-                        <div className={`col-span-1 md:col-span-2 p-5 md:p-8 rounded-3xl border-2 flex flex-col sm:flex-row items-center sm:items-stretch gap-6 relative overflow-hidden group ${
-                          dailyDone 
-                            ? 'bg-slate-50 border-slate-200 opacity-80' 
-                            : 'bg-gradient-to-br from-amber-500 to-orange-500 border-amber-600 text-white'
-                        }`}>
-                          <div className="flex-1 relative z-10 text-center sm:text-left">
-                            <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-                              <Sun size={20} className={dailyDone ? 'text-slate-400' : 'text-white animate-spin-slow'} />
-                              <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">Daily Challenge</span>
-                            </div>
-                            <h3 className="text-xl md:text-2xl font-display font-bold mb-2">10 MCQs Rapid Fire</h3>
-                            <p className={`text-xs md:text-sm mb-6 ${dailyDone ? 'text-slate-500' : 'text-white/80'}`}>
-                              {dailyDone ? 'You completed today\'s challenge! Return tomorrow.' : 'Finish in 5 minutes to earn the "Daily Warrior" badge.'}
-                            </p>
-                            
-                            {!dailyDone && (
-                              <button 
-                                onClick={startDailyChallenge}
-                                className="px-6 py-2.5 bg-white text-orange-600 font-bold text-xs uppercase tracking-widest rounded-xl hover:scale-105 active:scale-95 transition-all shadow-lg"
-                              >
-                                Start Challenge
-                              </button>
-                            )}
-                            {dailyDone && (
-                              <div className="flex items-center justify-center sm:justify-start gap-2 text-green-600 font-bold text-sm">
-                                <CheckCircle2 size={18} /> Completed 
-                              </div>
-                            )}
-                          </div>
-                          <div className={`w-24 h-24 md:w-32 md:h-32 flex items-center justify-center shrink-0 relative z-10 ${dailyDone ? 'grayscale opacity-20' : ''}`}>
-                             <div className="absolute inset-0 bg-white/20 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-1000"></div>
-                             <Star size={48} className="text-white drop-shadow-lg md:hidden" />
-                             <Star size={64} className="text-white drop-shadow-lg hidden md:block" />
-                          </div>
-                        </div>
-
-                        {/* Resume / Badges Panel */}
-                        <div className="flex flex-col gap-6">
-                           {hasSavedQuiz && (
-                             <motion.button
-                               initial={{ x: 20, opacity: 0 }}
-                               animate={{ x: 0, opacity: 1 }}
-                               onClick={restoreQuiz}
-                               className="p-6 bg-slate-900 rounded-3xl text-white border border-slate-700 shadow-xl group relative overflow-hidden"
-                             >
-                                <div className="relative z-10">
-                                   <div className="flex items-center gap-2 mb-2">
-                                      <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-                                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">Active Session</span>
-                                   </div>
-                                   <h3 className="text-xl font-display font-bold mb-1">Resume Test</h3>
-                                   <p className="text-[10px] text-slate-400 italic">Curated: {config.subject}</p>
-                                </div>
-                                <Activity className="absolute -right-4 -bottom-4 text-white/5 group-hover:scale-110 transition-transform" size={100} />
-                             </motion.button>
-                           )}
-
-                           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex-1">
-                           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                             <Award size={14} /> Unlocked Badges
-                           </h3>
-                           <div className="flex flex-wrap gap-3">
-                             {badges.length === 0 ? (
-                               <p className="text-xs text-slate-400 italic">Complete quizzes to unlock achievement badges.</p>
-                             ) : (
-                               badges.map(b => (
-                                 <div key={b} className="group relative">
-                                   <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center text-primary border border-primary/20 hover:bg-primary hover:text-white transition-all cursor-help shadow-sm">
-                                     <Award size={18} />
-                                   </div>
-                                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-white text-[9px] rounded font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-                                     {b}
-                                   </div>
-                                 </div>
-                               ))
-                             )}
-                           </div>
-                        </div>
-                      </div>
-
-                    </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {subjects.map((sub, idx) => (
-                          <motion.button
-                            key={sub.name}
-                            whileHover={{ y: -4, shadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
-                            onClick={() => startSetup(sub.name)}
-                            className={`p-6 border text-left transition-all group ${
-                              theme === 'rajasthan' 
-                                ? 'bg-white rounded-3xl border-orange-200 shadow-md shadow-orange-100 hover:shadow-xl' 
-                                : 'bg-white border-slate-200'
-                            }`}
+                        <div className="flex bg-white/50 backdrop-blur-sm p-1 rounded-2xl border border-slate-200">
+                          <button 
+                            onClick={() => { feedback('click'); setActiveTab('LIBRARY'); }}
+                            className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all ${activeTab === 'LIBRARY' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-main'}`}
                           >
-                            <div className={`w-10 h-10 ${
-                              theme === 'rajasthan' ? 'bg-rose-800' : (sub.color.includes('blue') ? 'bg-primary' : sub.color)
-                            } text-white flex items-center justify-center rounded-sm mb-4 group-hover:scale-110 transition-transform shadow-sm`}>
-                              <sub.icon size={20} />
-                            </div>
-                            <h3 className={`text-lg font-bold underline underline-offset-4 pointer-events-none ${
-                                theme === 'rajasthan' ? 'text-rose-900 decoration-orange-100 group-hover:decoration-rose-500' : 'text-slate-800 decoration-slate-200 group-hover:decoration-primary'
-                              }`}>{sub.name}</h3>
-                            <p className="text-sm text-slate-500 mt-2 italic pointer-events-none">{sub.desc}</p>
-                          </motion.button>
-                        ))}
+                            Exam Library
+                          </button>
+                          <button 
+                            onClick={() => { feedback('click'); setActiveTab('ACTIVITY'); }}
+                            className={`px-6 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${activeTab === 'ACTIVITY' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-main'}`}
+                          >
+                            Activity Monitor {historyResults.length > 0 && <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />}
+                          </button>
+                        </div>
                       </div>
+
+                      <AnimatePresence mode="wait">
+                        {activeTab === 'LIBRARY' ? (
+                          <motion.div
+                            key="library"
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="space-y-10"
+                          >
+                            {/* Gamification Row */}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                              {/* Daily Challenge Card */}
+                              <div className={`col-span-1 md:col-span-2 p-8 md:p-14 rounded-[3.5rem] border-2 flex flex-col sm:flex-row items-center sm:items-stretch gap-10 relative overflow-hidden group transition-all duration-700 ${
+                                theme === 'rajasthan' ? 'hover:border-amber-500 shadow-rajasthan' : 'hover:border-primary/50'
+                              } ${
+                                dailyDone 
+                                  ? 'bg-slate-50 border-slate-200 opacity-80' 
+                                  : 'bg-gradient-to-br from-[#0a0c1a] via-[#0f172a] to-[#0a0c1a] border-slate-800 text-white shadow-2xl'
+                              }`}>
+                                <div className="flex-1 relative z-10 text-center sm:text-left py-2">
+                                  <div className="flex items-center justify-center sm:justify-start gap-2 mb-4">
+                                    <div className="px-3 py-1 bg-primary/20 rounded-full border border-primary/30 flex items-center gap-2">
+                                      <Sun size={14} className={dailyDone ? 'text-slate-400' : 'text-primary animate-spin-slow'} />
+                                      <span className="text-[10px] font-bold uppercase tracking-widest leading-none">Daily Challenge</span>
+                                    </div>
+                                  </div>
+                                  <h3 className="text-2xl md:text-3xl font-display font-medium mb-3 italic tracking-tight">Today's <span className="text-primary not-italic font-bold">Rapid MCQ</span></h3>
+                                  <p className={`text-sm md:text-base mb-8 max-w-sm font-sans font-light leading-relaxed ${dailyDone ? 'text-slate-500' : 'text-slate-300'}`}>
+                                    {dailyDone ? 'You conquered today\'s challenge! Your results are stored in the monitor.' : 'Test your speed with 10 random high-yield questions from across the syllabus.'}
+                                  </p>
+                                  
+                                  {!dailyDone && (
+                                    <button 
+                                      onClick={startDailyChallenge}
+                                      className="px-8 py-3.5 bg-primary text-white font-bold text-xs uppercase tracking-[0.2em] rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-[0_10px_20px_-5px_rgba(99,102,241,0.5)] group-hover:brightness-110"
+                                    >
+                                      Launch Challenge
+                                    </button>
+                                  )}
+                                  {dailyDone && (
+                                    <div className="flex items-center justify-center sm:justify-start gap-3 text-green-500 font-bold text-sm bg-green-500/10 w-fit px-4 py-2 rounded-xl">
+                                      <CheckCircle2 size={18} /> Daily Goal Met
+                                    </div>
+                                  )}
+                                </div>
+                                <div className={`w-32 h-32 md:w-44 md:h-44 flex items-center justify-center shrink-0 relative z-10 ${dailyDone ? 'grayscale opacity-10' : ''}`}>
+                                   <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000"></div>
+                                   <Zap size={80} className="text-primary drop-shadow-[0_0_20px_rgba(99,102,241,0.5)] animate-pulse" />
+                                </div>
+                              </div>
+
+                              {/* Badges Panel */}
+                              <div className="flex flex-col gap-6">
+                                {hasSavedQuiz && (
+                                    <button
+                                      onClick={restoreQuiz}
+                                      className="p-8 md:p-10 bg-slate-900 rounded-[3rem] text-white border border-slate-800 shadow-2xl group relative overflow-hidden hover:border-primary transition-all text-left"
+                                    >
+                                        <div className="relative z-10">
+                                           <div className="flex items-center gap-3 mb-4">
+                                              <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></div>
+                                              <span className="text-[10px] font-bold uppercase tracking-widest text-red-400">Live Draft Available</span>
+                                           </div>
+                                           <h3 className="text-2xl font-display font-medium italic group-hover:text-primary transition-colors">Resume Practice</h3>
+                                           <p className="text-[10px] text-slate-500 mt-3 font-bold uppercase tracking-widest opacity-60">Subject: {config.subject}</p>
+                                        </div>
+                                        <Activity className="absolute -right-8 -bottom-8 text-white/[0.03] group-hover:text-primary/5 group-hover:scale-110 transition-all duration-1000" size={180} />
+                                    </button>
+                                )}
+
+                                <div className="bg-white border border-slate-200 rounded-[3rem] p-8 md:p-10 shadow-sm flex-1 flex flex-col hover:border-indigo-100 transition-all">
+                                  <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2 font-display">
+                                    <Award size={14} className="text-primary" /> Achievements Cabinet
+                                  </h3>
+                                  <div className="flex flex-wrap gap-4 flex-1 items-start">
+                                    {badges.length === 0 ? (
+                                      <p className="text-xs text-slate-400 italic font-sans leading-relaxed">Your trophy cabinet is currently empty. Excel in quizzes to earn honors.</p>
+                                    ) : (
+                                      badges.map(b => (
+                                        <div key={b} className="group relative">
+                                          <div className="w-12 h-12 bg-primary/5 rounded-2xl flex items-center justify-center text-primary border border-primary/10 hover:bg-primary hover:text-white transition-all cursor-help shadow-sm">
+                                            <Trophy size={18} />
+                                          </div>
+                                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-900 text-white text-[9px] rounded-lg font-bold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100 pointer-events-none shadow-xl border border-slate-700">
+                                            {b}
+                                          </div>
+                                        </div>
+                                      ))
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Subjects Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {subjects.map((sub, idx) => (
+                                <motion.button
+                                  key={sub.name}
+                                  whileHover={{ y: -6 }}
+                                  onClick={() => startSetup(sub.name)}
+                                  className={`p-6 border text-left transition-all group relative overflow-hidden ${
+                                    theme === 'rajasthan' 
+                                      ? 'bg-white rounded-3xl border-orange-200 shadow-md shadow-orange-100 hover:shadow-2xl hover:border-amber-400' 
+                                      : 'bg-white border-slate-200 rounded-[2rem] hover:border-primary hover:shadow-2xl shadow-indigo-100/50'
+                                  }`}
+                                >
+                                  <div className={`w-12 h-12 ${
+                                    theme === 'rajasthan' ? 'bg-rose-800' : (sub.color.includes('blue') ? 'bg-primary' : sub.color)
+                                  } text-white flex items-center justify-center rounded-2xl mb-5 group-hover:scale-110 transition-transform shadow-lg shadow-black/5`}>
+                                    <sub.icon size={22} />
+                                  </div>
+                                  <h3 className={`text-xl font-display font-medium italic underline underline-offset-4 decoration-2 decoration-transparent group-hover:decoration-current transition-all pointer-events-none ${
+                                      theme === 'rajasthan' ? 'text-rose-900' : 'text-slate-800'
+                                    }`}>{sub.name}</h3>
+                                  <p className="text-xs md:text-sm text-slate-500 mt-2 font-sans font-light leading-relaxed pointer-events-none">{sub.desc}</p>
+                                  
+                                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all translate-x-4 group-hover:translate-x-0">
+                                     <ChevronRight size={18} className="text-primary" />
+                                  </div>
+                                </motion.button>
+                              ))}
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="activity"
+                            initial={{ opacity: 0, scale: 0.98 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.98 }}
+                            className="space-y-8"
+                          >
+                            <div className="bg-white border border-slate-200 rounded-[2rem] p-6 md:p-8 shadow-sm">
+                               <div className="flex items-center justify-between mb-8">
+                                  <div>
+                                     <h3 className="text-xl font-display font-medium italic text-main flex items-center gap-2">
+                                        <Activity size={20} className="text-primary" /> Recent Performance Data
+                                     </h3>
+                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Real-time sync from Firestore Infrastructure</p>
+                                  </div>
+                                  <button 
+                                    onClick={fetchHistory}
+                                    className="p-2 text-slate-400 hover:text-primary hover:bg-slate-50 rounded-full transition-all"
+                                  >
+                                     <RotateCcw size={18} className={loadingHistory ? 'animate-spin' : ''} />
+                                  </button>
+                               </div>
+
+                               <HistoryPanel 
+                                 results={historyResults} 
+                                 loading={loadingHistory}
+                                 onSelect={(res) => {
+                                   // Maybe navigate to a detailed view later if needed
+                                   feedback('royal');
+                                 }}
+                               />
+                            </div>
+
+                            {/* Performance Insights Sidebar Substitute */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                               <div className="p-8 bg-slate-900 rounded-[2.5rem] text-white border border-slate-800 shadow-2xl relative overflow-hidden group">
+                                  <div className="relative z-10">
+                                     <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center text-primary mb-6">
+                                        <Zap size={24} />
+                                     </div>
+                                     <h3 className="text-xl font-display font-medium italic mb-2">Learning Velocity</h3>
+                                     <p className="text-sm text-slate-400 leading-relaxed max-w-xs">Your average time per question has improved by 14% over the last 5 sessions. Keep pushing!</p>
+                                  </div>
+                                  <TrendingUp className="absolute -right-4 -bottom-4 text-white/5 group-hover:text-primary/10 transition-all duration-1000 scale-150 rotate-[-15deg]" size={150} />
+                               </div>
+
+                               <div className="p-8 bg-white rounded-[2.5rem] border border-slate-200 shadow-xl group">
+                                  <div className="w-12 h-12 bg-accent/10 rounded-2xl flex items-center justify-center text-accent mb-6">
+                                     <CheckCircle2 size={24} />
+                                  </div>
+                                  <h3 className="text-xl font-display font-medium italic mb-2 text-main">Syllabus Coverage</h3>
+                                  <div className="space-y-4">
+                                     {['Rajasthan GK', 'Hindi', 'Current Affairs'].map(sub => (
+                                       <div key={sub} className="space-y-1.5">
+                                          <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                                             <span>{sub}</span>
+                                             <span>{Math.floor(Math.random() * 40) + 30}%</span>
+                                          </div>
+                                          <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                             <div 
+                                               className="h-full bg-accent transition-all duration-1000" 
+                                               style={{ width: `${Math.floor(Math.random() * 40) + 30}%` }}
+                                             />
+                                          </div>
+                                       </div>
+                                     ))}
+                                  </div>
+                               </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </motion.div>
                   )}
 
