@@ -1,6 +1,14 @@
 import { auth } from "../firebase";
 
-export const logSystemError = async (message: string, stack?: string) => {
+export interface LogEntry {
+  message: string;
+  stack?: string;
+  severity?: 'info' | 'warning' | 'error' | 'critical';
+  source?: string;
+  metadata?: any;
+}
+
+export const logSystemError = async (message: string, stack?: string, severity: 'info' | 'warning' | 'error' | 'critical' = 'error', source: string = 'frontend', metadata: any = {}) => {
   try {
     await fetch("/api/log-error", {
       method: "POST",
@@ -12,6 +20,9 @@ export const logSystemError = async (message: string, stack?: string) => {
         stack,
         userId: auth.currentUser?.uid,
         userEmail: auth.currentUser?.email,
+        severity,
+        source,
+        metadata
       }),
     });
   } catch (err) {

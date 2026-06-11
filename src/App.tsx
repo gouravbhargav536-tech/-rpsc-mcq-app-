@@ -44,6 +44,7 @@ import { Question, QuizConfig, Subject, Difficulty, Language, ThemeType, User, E
 import { auth, db, logout } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, setDoc, collection, serverTimestamp, getDocs, query, orderBy, limit, getDoc } from 'firebase/firestore';
+import { sanitizeFirestoreData } from './lib/firestore-utils';
 import IntroScreen from './components/IntroScreen';
 import AuthScreen from './components/AuthScreen';
 import RiverMap from './components/RiverMap';
@@ -189,18 +190,18 @@ export default function App() {
           const userRef = doc(db, 'users', firebaseUser.uid);
           const userSnap = await getDoc(userRef);
           if (!userSnap.exists()) {
-            await setDoc(userRef, {
+            await setDoc(userRef, sanitizeFirestoreData({
               userId: firebaseUser.uid,
               name: u.name,
               email: u.email,
               createdAt: serverTimestamp(),
               lastActiveAt: serverTimestamp(),
-            });
+            }));
           } else {
-            await setDoc(userRef, {
+            await setDoc(userRef, sanitizeFirestoreData({
               name: u.name,
               lastActiveAt: serverTimestamp(),
-            }, { merge: true });
+            }), { merge: true });
           }
         } catch (e) {
           console.error("Profile sync failed", e);
@@ -364,7 +365,7 @@ export default function App() {
         const path = `users/${auth.currentUser.uid}/quizResults`;
         try {
           const resultRef = doc(collection(db, path));
-          await setDoc(resultRef, {
+          await setDoc(resultRef, sanitizeFirestoreData({
             userId: auth.currentUser.uid,
             subject: config.subject,
             difficulty: config.difficulty,
@@ -381,27 +382,27 @@ export default function App() {
               explanation: q.explanation
             })),
             userAnswers: userAnswers
-          });
+          }));
 
           // Also write to central quizzes for global monitoring
-          await setDoc(doc(db, 'quizzes', resultRef.id), {
+          await setDoc(doc(db, 'quizzes', resultRef.id), sanitizeFirestoreData({
             userId: auth.currentUser.uid,
             subject: config.subject,
             score: getScore(),
             total: questions.length,
             timestamp: serverTimestamp()
-          });
+          }));
           
           const userPath = `users/${auth.currentUser.uid}`;
           // Use { merge: true } but don't overwrite createdAt if it already exists
           // Rules verify createdAt immutability, so we just don't send it if it's an update
           // However, we don't know for sure here, so we'll just send name/email/userId/lastActiveAt
-          await setDoc(doc(db, userPath), {
+          await setDoc(doc(db, userPath), sanitizeFirestoreData({
             userId: auth.currentUser.uid,
             name: user?.name || '',
             email: user?.email || '',
             lastActiveAt: serverTimestamp(),
-          }, { merge: true });
+          }), { merge: true });
         } catch (error) {
           handleFirestoreError(error, 'write', path);
         }

@@ -3,9 +3,24 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getCountFromServer, query, orderBy, limit, getDocs, addDoc, serverTimestamp } from "firebase/firestore";
-
+import { getFirestore, collection, getCountFromServer, query, orderBy, limit, getDocs, addDoc, serverTimestamp, setDoc, doc } from "firebase/firestore";
 import { readFile } from "fs/promises";
+
+/**
+ * Sanitizes object data for Firestore by removing undefined values
+ */
+function sanitizeFirestoreData(data: any): any {
+  if (data === null || typeof data !== 'object') return data;
+  const sanitized = { ...data };
+  Object.keys(sanitized).forEach((key) => {
+    if (sanitized[key] === undefined) {
+      sanitized[key] = null;
+    } else if (typeof sanitized[key] === 'object' && sanitized[key] !== null && !Array.isArray(sanitized[key])) {
+      sanitized[key] = sanitizeFirestoreData(sanitized[key]);
+    }
+  });
+  return sanitized;
+}
 
 async function startServer() {
   const firebaseConfig = JSON.parse(
@@ -41,14 +56,29 @@ async function startServer() {
   // Error logging endpoint (public or at least accessible by app)
   app.post("/api/log-error", async (req, res) => {
     try {
-      const { message, stack, userEmail, userId } = req.body;
-      await addDoc(collection(db, "system_errors"), {
-        message,
-        stack,
-        userEmail,
-        userId,
+      const { 
+        message, 
+        stack, 
+        userEmail, 
+        userId, 
+        severity = 'error', 
+        source = 'frontend',
+        metadata = {}
+      } = req.body;
+
+      const logData = sanitizeFirestoreData({
+        message: message || "Unknown error",
+        stackTrace: stack || null,
+        userEmail: userEmail || null,
+        userId: userId || null,
+        severity,
+        source,
+        environment: process.env.NODE_ENV || "development",
+        metadata,
         timestamp: serverTimestamp()
       });
+
+      await addDoc(collection(db, "system_errors"), logData);
       res.json({ success: true });
     } catch (error) {
       console.error("Failed to log error:", error);
@@ -120,8 +150,7 @@ async function startServer() {
   // API endpoints
   app.post("/api/generate-quiz", async (req, res) => {
     const maxRetries = 3;
-    const models = ["gemini-1.5-flash", "gemini-1.5-pro"]; // Use stable models as fallbacks if primary fails
-    const primaryModel = "gemini-1.5-flash"; // Assuming stable primary
+    const models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash"]; 
     
     const { config } = req.body;
     if (!process.env.GEMINI_API_KEY) {
@@ -133,20 +162,28 @@ async function startServer() {
   Return the output STRICTLY as a JSON array. Do not include markdown or conversational text.
   Schema: [{"id": "unique-uuid", "question": "string", "options": {"A": "string", "B": "string", "C": "string", "D": "string"}, "correctAnswer": "A", "explanation": "Detailed explanation in Hindi", "teacherInsight": "Helpful tip in Hindi", "extraFacts": ["fact 1 in Hindi", "fact 2 in Hindi"], "wrongOptionsAnalysis": {"A": "why wrong in Hindi", "B": "why wrong in Hindi", "C": "why wrong in Hindi", "D": "why wrong in Hindi"}}]`;
 
-    let lastError = null;
+    let lastError: any = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      // Rotate models on retry to increase success chance
-      const activeModel = attempt === 1 ? primaryModel : (attempt === 2 ? "gemini-1.5-pro" : "gemini-1.5-flash");
+      const activeModel = models[attempt - 1] || "gemini-1.5-flash";
       
       try {
         console.log(`Quiz generation attempt ${attempt} using ${activeModel}...`);
-        const response = await ai.models.generateContent({
+        
+        // Timeout handling for Gemini call
+        const startTime = Date.now();
+        const generatePromise = ai.models.generateContent({
           model: activeModel,
           contents: prompt,
         });
 
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Gemini Request Timeout")), 30000)
+        );
+
+        const response: any = await Promise.race([generatePromise, timeoutPromise]);
         const text = response.text;
+        
         if (!text) {
           throw new Error("Empty response from AI");
         }
@@ -164,18 +201,45 @@ async function startServer() {
         lastError = error;
         console.error(`Attempt ${attempt} failed:`, error.message);
         
-        // Don't wait on last attempt
-        if (attempt < maxRetries) {
-          const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+        // Check if retry is appropriate (e.g., rate limit or overload)
+        const isRetryable = error.message.includes('429') || 
+                            error.message.includes('503') || 
+                            error.message.includes('500') ||
+                            error.message.includes('Timeout');
+
+        if (attempt < maxRetries && isRetryable) {
+          const delay = [2000, 4000, 8000][attempt - 1] || 4000;
+          console.log(`Retrying Gemini in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          break; // Stop if not retryable or max attempts reached
         }
       }
     }
 
-    // If we reach here, all retries failed
-    const friendlyMessage = lastError?.message?.includes('429') 
-      ? "Server is currently busy (Rate Limit). Please wait a moment and try again."
-      : "The AI is having trouble generating questions right now. Please try a different topic or try again in a few seconds.";
+    // Log the final failure
+    const logBody = {
+      message: `Gemini Quiz Gen Failure: ${lastError?.message}`,
+      stack: lastError?.stack,
+      severity: 'error',
+      source: 'backend',
+      metadata: { config, attempts: maxRetries }
+    };
+    
+    // Internal call to log-error logic
+    try {
+      await addDoc(collection(db, "system_errors"), sanitizeFirestoreData({
+        ...logBody,
+        environment: process.env.NODE_ENV || "development",
+        timestamp: serverTimestamp()
+      }));
+    } catch (e) {
+      console.error("Critical: Failed to log Gemini error to Firestore", e);
+    }
+
+    const friendlyMessage = lastError?.message?.includes('429') || lastError?.message?.includes('503')
+      ? "Google AI service is currently busy. Please try again in a few moments."
+      : "The AI is having trouble generating questions right now. Please try a different topic or try again shortly.";
 
     res.status(500).json({ 
       error: friendlyMessage,

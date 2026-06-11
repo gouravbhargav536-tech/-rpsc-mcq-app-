@@ -20,6 +20,7 @@ import {
 import { auth, db } from '../firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { adminFetch } from '../services/logger';
+import { checkSystemHealth, SystemHealth } from '../services/healthMonitor';
 import { AdminStats, HealthCheckResult, SystemError } from '../types/admin';
 
 export default function AdminMonitor() {
@@ -28,7 +29,7 @@ export default function AdminMonitor() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [healthResults, setHealthResults] = useState<HealthCheckResult | null>(null);
+  const [healthResults, setHealthResults] = useState<SystemHealth | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
 
   const fetchStats = async (key: string) => {
@@ -41,6 +42,9 @@ export default function AdminMonitor() {
       setStats(data);
       setIsAuthenticated(true);
       localStorage.setItem('admin_key', key);
+      
+      // Auto-run health check on login
+      runHealthCheck(key);
     } catch (err: any) {
       setError(err.message);
       setIsAuthenticated(false);
@@ -62,34 +66,13 @@ export default function AdminMonitor() {
     fetchStats(adminKey);
   };
 
-  const runHealthCheck = async () => {
+  const runHealthCheck = async (keyOverride?: string) => {
+    const key = keyOverride || adminKey;
+    if (!key) return;
+    
     setCheckingHealth(true);
-    const results: HealthCheckResult = {
-      auth: false,
-      firestoreRead: false,
-      firestoreWrite: false,
-      gemini: false,
-      timestamp: new Date().toISOString()
-    };
-
     try {
-      // 1. Auth Test
-      results.auth = !!auth.currentUser || false;
-
-      // 2. Firestore Read Test
-      const testDoc = await getDoc(doc(db, 'system_config', 'health_check'));
-      results.firestoreRead = true;
-
-      // 3. Firestore Write Test
-      await setDoc(doc(db, 'system_config', 'health_check'), {
-        lastChecked: new Date().toISOString(),
-        checkedBy: auth.currentUser?.email || 'Anonymous Admin'
-      }, { merge: true });
-      results.firestoreWrite = true;
-
-      // 4. Gemini Test (via server)
-      results.gemini = stats?.geminiStatus === 'Working';
-
+      const results = await checkSystemHealth(key);
       setHealthResults(results);
     } catch (err) {
       console.error('Health Check Failed:', err);
@@ -142,8 +125,8 @@ export default function AdminMonitor() {
     );
   }
 
-  const StatusBadge = ({ status }: { status: 'Working' | 'Warning' | 'Failed' | boolean }) => {
-    const isWorking = status === 'Working' || status === true;
+  const StatusBadge = ({ status }: { status: 'Healthy' | 'Working' | 'Warning' | 'Failed' | boolean }) => {
+    const isWorking = status === 'Working' || status === 'Healthy' || status === true;
     const isWarning = status === 'Warning';
     
     return (
@@ -234,12 +217,12 @@ export default function AdminMonitor() {
                   <h3 className="font-bold text-white">System Health Check</h3>
                 </div>
                 <button 
-                  onClick={runHealthCheck}
+                  onClick={() => runHealthCheck()}
                   disabled={checkingHealth}
                   className="bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2 transition-colors active:scale-95 disabled:opacity-50"
                 >
                   {checkingHealth ? <RefreshCcw className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
-                  Run Diagnostics
+                  Run Full Diagnostics
                 </button>
               </div>
               <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -253,7 +236,7 @@ export default function AdminMonitor() {
                     <span className="text-sm font-medium text-slate-300">{item.label}</span>
                     {healthResults ? (
                       <div className="flex items-center gap-2">
-                        {item.status ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
+                        {item.status === 'Healthy' ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <XCircle className="w-5 h-5 text-red-500" />}
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-slate-600">
@@ -284,7 +267,7 @@ export default function AdminMonitor() {
                       <div className="flex items-start gap-3">
                         <div className="mt-1 w-2 h-2 rounded-full bg-red-500 flex-shrink-0 animate-pulse" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-white text-sm font-medium line-clamp-2">{err.message}</p>
+                          <p className="text-white text-sm font-medium line-clamp-2">{err.error || err.message}</p>
                           <div className="flex items-center gap-4 mt-2">
                             <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
                               <History className="w-3 h-3" /> {err.timestamp?.seconds ? new Date(err.timestamp.seconds * 1000).toLocaleString() : 'Just now'}
