@@ -27,7 +27,7 @@ async function startServer() {
     await readFile(path.join(process.cwd(), "firebase-applet-config.json"), "utf8")
   );
   const fbApp = initializeApp(firebaseConfig);
-  const db = getFirestore(fbApp);
+  const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
 
   const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY,
@@ -111,7 +111,7 @@ async function startServer() {
       let geminiStatus: 'Working' | 'Failed' = 'Working';
       try {
         await ai.models.generateContent({
-          model: "gemini-1.5-flash",
+          model: "gemini-3.5-flash",
           contents: "Hello",
         });
       } catch (e) {
@@ -150,7 +150,7 @@ async function startServer() {
   // API endpoints
   app.post("/api/generate-quiz", async (req, res) => {
     const maxRetries = 3;
-    const models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.5-flash"]; 
+    const models = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.5-flash"]; 
     
     const { config } = req.body;
     if (!process.env.GEMINI_API_KEY) {
@@ -165,7 +165,7 @@ async function startServer() {
     let lastError: any = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      const activeModel = models[attempt - 1] || "gemini-1.5-flash";
+      const activeModel = models[attempt - 1] || "gemini-3.5-flash";
       
       try {
         console.log(`Quiz generation attempt ${attempt} using ${activeModel}...`);
