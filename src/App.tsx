@@ -406,13 +406,17 @@ export default function App() {
     setScreen('QUIZ');
     try {
       const generatedQuestions = await generateQuizQuestions(config);
+      if (!generatedQuestions || generatedQuestions.length === 0) {
+        throw new Error("Empty questions returned from AI.");
+      }
       setQuestions(generatedQuestions);
       setUserAnswers(new Array(generatedQuestions.length).fill(null));
       setCurrentIndex(0);
       quizTimerRef.current = 0;
       setIsAnswered(false);
-    } catch (error) {
-      alert("Error generating quiz. Please try again.");
+    } catch (error: any) {
+      console.error("Quiz Gen Error:", error);
+      alert(`Error generating quiz: ${error.message || "Please try again."}`);
       setScreen('SETUP');
     } finally {
       setLoading(false);
