@@ -116,12 +116,13 @@ export default function App() {
   // Persist user and progress
   useEffect(() => {
     const savedUser = localStorage.getItem('rpsc_user');
-    if (savedUser) {
+    if (savedUser && savedUser !== 'undefined' && savedUser !== 'null') {
       try {
         setUser(JSON.parse(savedUser));
         setScreen('HOME');
       } catch (e) {
         console.error("Failed to parse saved user", e);
+        localStorage.removeItem('rpsc_user');
       }
     }
   }, []);
@@ -162,18 +163,23 @@ export default function App() {
 
   const restoreQuiz = () => {
     const saved = localStorage.getItem('rpsc_current_quiz');
-    if (saved) {
-      const data = JSON.parse(saved);
-      setConfig(data.config);
-      setQuestions(data.questions);
-      setUserAnswers(data.userAnswers);
-      setCurrentIndex(data.currentIndex);
-      quizTimerRef.current = data.quizTimer || 0;
-      setIsAnswered(data.isAnswered);
-      setIsReviewMode(data.isReviewMode);
-      setIsDailyChallenge(data.isDailyChallenge);
-      setScreen('QUIZ');
-      feedback('success');
+    if (saved && saved !== 'undefined' && saved !== 'null') {
+      try {
+        const data = JSON.parse(saved);
+        setConfig(data.config || config);
+        setQuestions(data.questions || []);
+        setUserAnswers(data.userAnswers || []);
+        setCurrentIndex(data.currentIndex || 0);
+        quizTimerRef.current = data.quizTimer || 0;
+        setIsAnswered(data.isAnswered || false);
+        setIsReviewMode(data.isReviewMode || false);
+        setIsDailyChallenge(data.isDailyChallenge || false);
+        setScreen('QUIZ');
+        feedback('success');
+      } catch (e) {
+        console.error("Quiz restoration failed", e);
+        localStorage.removeItem('rpsc_current_quiz');
+      }
     }
   };
 
@@ -213,14 +219,18 @@ export default function App() {
         }
       } else {
         const savedUser = localStorage.getItem('rpsc_user');
-        if (savedUser) {
-          const u = JSON.parse(savedUser);
-          if (u.isGuest) {
-            setUser(u);
-            if (screen === 'LANDING' || screen === 'INTRO' || screen === 'AUTH') {
-              setScreen('HOME');
+        if (savedUser && savedUser !== 'undefined' && savedUser !== 'null') {
+          try {
+            const u = JSON.parse(savedUser);
+            if (u.isGuest) {
+              setUser(u);
+              if (screen === 'LANDING' || screen === 'INTRO' || screen === 'AUTH') {
+                setScreen('HOME');
+              }
+              return;
             }
-            return;
+          } catch (e) {
+            localStorage.removeItem('rpsc_user');
           }
         }
 
@@ -310,14 +320,18 @@ export default function App() {
 
   useEffect(() => {
     const savedStats = localStorage.getItem('rpsc-gamification');
-    if (savedStats) {
-      const stats = JSON.parse(savedStats);
-      setStreak(stats.streak || 0);
-      setBadges(stats.badges || []);
-      
-      const today = new Date().toDateString();
-      if (stats.lastDailyDate === today) {
-        setDailyDone(true);
+    if (savedStats && savedStats !== 'undefined' && savedStats !== 'null') {
+      try {
+        const stats = JSON.parse(savedStats);
+        setStreak(stats.streak || 0);
+        setBadges(stats.badges || []);
+        
+        const today = new Date().toDateString();
+        if (stats.lastDailyDate === today) {
+          setDailyDone(true);
+        }
+      } catch (e) {
+        localStorage.removeItem('rpsc-gamification');
       }
     }
   }, []);

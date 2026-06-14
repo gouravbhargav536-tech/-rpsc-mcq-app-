@@ -2,8 +2,8 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import * as adminApp from 'firebase-admin/app';
-import * as adminFirestore from 'firebase-admin/firestore';
+import { initializeApp, getApps } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { readFile } from "fs/promises";
 
 /**
@@ -27,14 +27,18 @@ async function startServer() {
     await readFile(path.join(process.cwd(), "firebase-applet-config.json"), "utf8")
   );
 
-  if (!adminApp.getApps().length) {
-    adminApp.initializeApp({
-      projectId: firebaseConfig.projectId,
-    });
+  if (!getApps().length) {
+    // Relying on Application Default Credentials (ADC) for Cloud Run
+    try {
+      initializeApp();
+    } catch (e) {
+      console.error("Failed to initialize Firebase Admin:", e);
+    }
   }
   
-  // Use specific database ID for Enterprise tier if provided
-  const db = adminFirestore.getFirestore(firebaseConfig.firestoreDatabaseId || undefined);
+  // Use the specific database ID from config 
+  const db = getFirestore(firebaseConfig.firestoreDatabaseId || '(default)');
+  const serverTimestamp = FieldValue.serverTimestamp();
 
   const ai = new GoogleGenAI({
     apiKey: process.env.GEMINI_API_KEY as string,
@@ -59,8 +63,6 @@ async function startServer() {
       res.status(401).json({ error: "Unauthorized" });
     }
   };
-
-  const serverTimestamp = adminFirestore.FieldValue.serverTimestamp();
 
   // Error logging endpoint
   app.post("/api/log-error", async (req, res) => {
@@ -89,36 +91,51 @@ async function startServer() {
 
       await db.collection("system_errors").add(logData);
       res.json({ success: true });
-    } catch (error) {
-      console.error("Failed to log error to Firestore:", error);
+    } catch (error: any) {
+      console.error("Failed to log error to Firestore:", error?.message);
+      if (error?.code === 7 || error?.message?.includes("not been used in project")) {
+        console.error("CRITICAL: Cloud Firestore API is likely NOT ENABLED in project:", firebaseConfig.projectId);
+        console.error("Please visit https://console.cloud.google.com/apis/library/firestore.googleapis.com to enable it.");
+      } else if (error?.message?.includes("Missing or insufficient permissions")) {
+        console.error("CRITICAL: Service Account permissions issue for database:", firebaseConfig.firestoreDatabaseId);
+      }
       res.status(500).json({ error: "Internal error" });
     }
   });
 
   // Public Health Check Endpoint
   app.get("/api/health-check", async (req, res) => {
+    const startTime = Date.now();
+    const activeModel = "gemini-1.5-flash";
     try {
-      const geminiModel = ai.models.generateContent({
-        model: "gemini-1.5-flash",
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("GEMINI_API_KEY environment variable is missing");
+      }
+      
+      const response = await ai.models.generateContent({
+        model: activeModel,
         contents: "Say OK",
       });
       
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Timeout")), 10000)
-      );
-
-      await Promise.race([geminiModel, timeoutPromise]);
+      const duration = Date.now() - startTime;
       
       res.json({ 
         gemini: "✅ Working",
         firebase: "✅ Connected",
+        model: activeModel,
+        responseTime: `${duration}ms`,
+        apiKeyStatus: "Configured",
         timestamp: new Date().toISOString()
       });
     } catch (error: any) {
+      console.error("Health Check Internal Error:", error);
       res.status(503).json({ 
         gemini: "❌ Failed",
-        firebase: "✅ Connected", // If we got here, server is up
-        error: error.message
+        firebase: "✅ Connected",
+        error: error.message,
+        model: activeModel,
+        apiKeyStatus: process.env.GEMINI_API_KEY ? "Configured" : "Missing",
+        technicalDetails: error.stack
       });
     }
   });
@@ -148,7 +165,7 @@ async function startServer() {
       let geminiStatus: 'Working' | 'Failed' = 'Working';
       try {
         await ai.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-1.5-flash",
           contents: "Hello",
         });
       } catch (e) {
@@ -187,7 +204,7 @@ async function startServer() {
         geminiStatus,
         errors,
         lastQuizTime,
-        appVersion: "1.2.1",
+        appVersion: "1.2.2-PRD",
         environment: process.env.NODE_ENV || "development"
       });
     } catch (error: any) {
@@ -199,7 +216,7 @@ async function startServer() {
   // API endpoints
   app.post("/api/generate-quiz", async (req, res) => {
     const maxRetries = 3;
-    const models = ["gemini-3.5-flash", "gemini-3.1-pro-preview", "gemini-3.5-flash"]; 
+    const models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]; 
     
     const { config } = req.body;
     if (!process.env.GEMINI_API_KEY) {
@@ -219,16 +236,11 @@ async function startServer() {
       try {
         console.log(`Quiz generation attempt ${attempt} using ${activeModel}...`);
         
-        const generatePromise = ai.models.generateContent({
+        const response = await ai.models.generateContent({
           model: activeModel,
           contents: prompt,
         });
 
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Gemini Request Timeout")), 45000)
-        );
-
-        const response: any = await Promise.race([generatePromise, timeoutPromise]);
         const text = response.text;
         
         if (!text) {
@@ -286,6 +298,29 @@ async function startServer() {
       error: friendlyMessage,
       technicalDetails: lastError?.message 
     });
+  });
+
+  // 404 handler for API routes (Must be before Vite/Static catch-all)
+  app.all("/api/*", (req, res) => {
+    console.warn(`404 Observed on API path: ${req.path}`);
+    res.status(404).json({ 
+      error: "API Route Not Found", 
+      path: req.path,
+      method: req.method 
+    });
+  });
+
+  // Global Error Handler for Express
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Unhandled Global Server Error:", err);
+    if (req.path.startsWith('/api/')) {
+        return res.status(500).json({ 
+            error: "Internal Server Error", 
+            message: err.message,
+            stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+        });
+    }
+    next(err);
   });
 
   // Vite middleware for development

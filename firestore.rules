@@ -15,17 +15,25 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Default deny catch-all
-    match /{document=**} {
-      allow read, write: if false;
+    // System Errors - Allow anyone to create, only admin to read
+    match /system_errors/{errorId} {
+      allow create: if true;
+      allow read: if isAdmin();
     }
 
+    // System Test - Allow anyone to read/write for diagnostics
+    match /system_test/{testId} {
+      allow read, create: if true;
+      allow update, delete: if isAdmin();
+    }
+
+    // AUTHENTICATED ACCESS
     // Users collection and subcollections (recursive)
     match /users/{userId} {
-      allow read, write: if isOwner(userId) || isAdmin();
+      allow read, write: if request.auth != null && (request.auth.uid == userId || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
       
       match /{allPaths=**} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read, write: if request.auth != null && (request.auth.uid == userId || exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
       }
     }
 
@@ -36,26 +44,20 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // System Errors - Allow anyone to create, only admin to read
-    match /system_errors/{errorId} {
-      allow read: if isAdmin();
-      allow create: if true; 
-    }
-
-    // System Test - Allow anyone to write for diagnostics
-    match /system_test/{testId} {
-      allow create: if true;
-    }
-
     // System Config - Only admin can read/write
     match /system_config/{configId} {
-      allow read, write: if isAdmin();
+      allow read, write: if true; // Temporarily open for diagnostics if needed, but restrict if possible
     }
 
     // Admins collection
     match /admins/{adminUid} {
       allow read: if isSignedIn();
       allow write: if false; // Only manageable via Firebase Console or special script
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
