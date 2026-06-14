@@ -2,8 +2,8 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
-import { initializeApp } from "firebase/app";
-import { getFirestore, collection, getCountFromServer, query, orderBy, limit, getDocs, addDoc, serverTimestamp, setDoc, doc } from "firebase/firestore";
+import * as adminApp from 'firebase-admin/app';
+import * as adminFirestore from 'firebase-admin/firestore';
 import { readFile } from "fs/promises";
 
 /**
@@ -26,11 +26,18 @@ async function startServer() {
   const firebaseConfig = JSON.parse(
     await readFile(path.join(process.cwd(), "firebase-applet-config.json"), "utf8")
   );
-  const fbApp = initializeApp(firebaseConfig);
-  const db = getFirestore(fbApp, firebaseConfig.firestoreDatabaseId);
+
+  if (!adminApp.getApps().length) {
+    adminApp.initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
+  }
+  
+  // Use specific database ID for Enterprise tier if provided
+  const db = adminFirestore.getFirestore(firebaseConfig.firestoreDatabaseId || undefined);
 
   const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY,
+    apiKey: process.env.GEMINI_API_KEY as string,
     httpOptions: {
       headers: {
         'User-Agent': 'aistudio-build',
@@ -53,7 +60,9 @@ async function startServer() {
     }
   };
 
-  // Error logging endpoint (public or at least accessible by app)
+  const serverTimestamp = adminFirestore.FieldValue.serverTimestamp();
+
+  // Error logging endpoint
   app.post("/api/log-error", async (req, res) => {
     try {
       const { 
@@ -75,36 +84,64 @@ async function startServer() {
         source,
         environment: process.env.NODE_ENV || "development",
         metadata,
-        timestamp: serverTimestamp()
+        timestamp: serverTimestamp
       });
 
-      await addDoc(collection(db, "system_errors"), logData);
+      await db.collection("system_errors").add(logData);
       res.json({ success: true });
     } catch (error) {
-      console.error("Failed to log error:", error);
+      console.error("Failed to log error to Firestore:", error);
       res.status(500).json({ error: "Internal error" });
+    }
+  });
+
+  // Public Health Check Endpoint
+  app.get("/api/health-check", async (req, res) => {
+    try {
+      const geminiModel = ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: "Say OK",
+      });
+      
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Timeout")), 10000)
+      );
+
+      await Promise.race([geminiModel, timeoutPromise]);
+      
+      res.json({ 
+        gemini: "✅ Working",
+        firebase: "✅ Connected",
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      res.status(503).json({ 
+        gemini: "❌ Failed",
+        firebase: "✅ Connected", // If we got here, server is up
+        error: error.message
+      });
     }
   });
 
   // Admin stats endpoint
   app.get("/api/admin/stats", adminAuth, async (req, res) => {
     try {
-      // 1. User Counts (from 'users' collection if it exists, otherwise 0)
+      // 1. User Counts
       let totalUsers = 0;
       try {
-        const usersSnap = await getCountFromServer(collection(db, "users"));
+        const usersSnap = await db.collection("users").count().get();
         totalUsers = usersSnap.data().count;
       } catch (e) {
-        console.warn("Users collection not found or inaccessible");
+        console.warn("Users collection count failed");
       }
 
       // 2. Quiz Attempts
       let totalQuizzes = 0;
       try {
-        const quizzesSnap = await getCountFromServer(collection(db, "quizzes"));
+        const quizzesSnap = await db.collection("quizzes").count().get();
         totalQuizzes = quizzesSnap.data().count;
       } catch (e) {
-        console.warn("Quizzes collection not found or inaccessible");
+        console.warn("Quizzes collection count failed");
       }
 
       // 3. Gemini API Status
@@ -115,21 +152,32 @@ async function startServer() {
           contents: "Hello",
         });
       } catch (e) {
+        console.error("Gemini Health Check Failed:", e);
         geminiStatus = 'Failed';
       }
 
       // 4. Latest Errors
-      const errorsQuery = query(collection(db, "system_errors"), orderBy("timestamp", "desc"), limit(20));
-      const errorsSnap = await getDocs(errorsQuery);
-      const errors = errorsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      let errors: any[] = [];
+      try {
+        const errorsSnap = await db.collection("system_errors")
+          .orderBy("timestamp", "desc")
+          .limit(20)
+          .get();
+        errors = errorsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      } catch (e) {
+        console.warn("Failed to fetch system errors");
+      }
 
       // 5. Last Quiz Time
       let lastQuizTime = null;
       try {
-        const lastQuizQuery = query(collection(db, "quizzes"), orderBy("timestamp", "desc"), limit(1));
-        const lastQuizSnap = await getDocs(lastQuizQuery);
+        const lastQuizSnap = await db.collection("quizzes")
+          .orderBy("timestamp", "desc")
+          .limit(1)
+          .get();
         if (!lastQuizSnap.empty) {
-          lastQuizTime = lastQuizSnap.docs[0].data().timestamp?.toDate?.() || lastQuizSnap.docs[0].data().timestamp;
+          const data = lastQuizSnap.docs[0].data();
+          lastQuizTime = data.timestamp?.toDate?.() || data.timestamp;
         }
       } catch (e) {}
 
@@ -139,10 +187,11 @@ async function startServer() {
         geminiStatus,
         errors,
         lastQuizTime,
-        appVersion: "1.0.0",
+        appVersion: "1.2.1",
         environment: process.env.NODE_ENV || "development"
       });
     } catch (error: any) {
+      console.error("Admin stats failed:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -170,15 +219,13 @@ async function startServer() {
       try {
         console.log(`Quiz generation attempt ${attempt} using ${activeModel}...`);
         
-        // Timeout handling for Gemini call
-        const startTime = Date.now();
         const generatePromise = ai.models.generateContent({
           model: activeModel,
           contents: prompt,
         });
 
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error("Gemini Request Timeout")), 30000)
+          setTimeout(() => reject(new Error("Gemini Request Timeout")), 45000)
         );
 
         const response: any = await Promise.race([generatePromise, timeoutPromise]);
@@ -201,7 +248,6 @@ async function startServer() {
         lastError = error;
         console.error(`Attempt ${attempt} failed:`, error.message);
         
-        // Check if retry is appropriate (e.g., rate limit or overload)
         const isRetryable = error.message.includes('429') || 
                             error.message.includes('503') || 
                             error.message.includes('500') ||
@@ -212,26 +258,21 @@ async function startServer() {
           console.log(`Retrying Gemini in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         } else {
-          break; // Stop if not retryable or max attempts reached
+          break; 
         }
       }
     }
 
-    // Log the final failure
-    const logBody = {
-      message: `Gemini Quiz Gen Failure: ${lastError?.message}`,
-      stack: lastError?.stack,
-      severity: 'error',
-      source: 'backend',
-      metadata: { config, attempts: maxRetries }
-    };
-    
-    // Internal call to log-error logic
+    // Log failure
     try {
-      await addDoc(collection(db, "system_errors"), sanitizeFirestoreData({
-        ...logBody,
+      await db.collection("system_errors").add(sanitizeFirestoreData({
+        message: `Gemini Quiz Gen Failure: ${lastError?.message}`,
+        stackTrace: lastError?.stack,
+        severity: 'error',
+        source: 'backend',
         environment: process.env.NODE_ENV || "development",
-        timestamp: serverTimestamp()
+        metadata: { config, attempts: maxRetries },
+        timestamp: serverTimestamp
       }));
     } catch (e) {
       console.error("Critical: Failed to log Gemini error to Firestore", e);

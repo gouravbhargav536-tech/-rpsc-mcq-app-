@@ -50,6 +50,7 @@ import AuthScreen from './components/AuthScreen';
 import RiverMap from './components/RiverMap';
 import HistoryPanel, { FirestoreQuizResult } from './components/HistoryPanel';
 import SessionTimer, { formatTime } from './components/SessionTimer';
+import SystemMonitor from './components/SystemMonitor';
 import AdminMonitor from './pages/AdminMonitor';
 import { logSystemError } from './services/logger';
 import { useFeedback } from './hooks/useFeedback';
@@ -956,6 +957,10 @@ export default function App() {
                                   </div>
                                 </motion.button>
                               ))}
+                            </div>
+
+                            <div className="mt-12 max-w-2xl">
+                               <SystemMonitor />
                             </div>
                           </motion.div>
                         ) : (
