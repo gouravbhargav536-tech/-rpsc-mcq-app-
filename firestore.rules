@@ -17,8 +17,7 @@ service cloud.firestore {
 
     // System Errors - Allow anyone to create, only admin to read
     match /system_errors/{errorId} {
-      allow create: if true;
-      allow read: if isAdmin();
+      allow read, write: if true;
     }
 
     // System Test - Allow anyone to read/write for diagnostics

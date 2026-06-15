@@ -115,7 +115,11 @@ async function startServer() {
       await db.collection("system_errors").add(logData);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("Failed to log error to Firestore:", error?.message);
+      console.error("Failed to log error to Firestore:", {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details
+      });
       
       const isApiDisabled = error?.code === 7 || 
                             error?.message?.includes("not been used in project") || 
@@ -369,8 +373,7 @@ async function startServer() {
     });
   });
 
-  // 404 handler for API routes (Must be before Vite/Static catch-all)
-  app.all("/api/*all", (req, res) => {
+  app.all("/api/(.*)", (req, res) => {
     console.warn(`404 Observed on API path: ${req.path}`);
     res.status(404).json({ 
       error: "API Route Not Found", 
@@ -402,7 +405,8 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get('(.*)', (req, res, next) => {
+      if (req.path.startsWith('/api/')) return next();
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
