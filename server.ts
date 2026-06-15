@@ -27,27 +27,50 @@ async function startServer() {
     await readFile(path.join(process.cwd(), "firebase-applet-config.json"), "utf8")
   );
 
+  let appInstance;
   if (!getApps().length) {
-    // Relying on Application Default Credentials (ADC) for Cloud Run
     try {
-      initializeApp();
+      appInstance = initializeApp({
+        projectId: firebaseConfig.projectId
+      });
+      console.log("Firebase Admin initialized for project:", firebaseConfig.projectId);
     } catch (e) {
       console.error("Failed to initialize Firebase Admin:", e);
     }
+  } else {
+    appInstance = getApps()[0];
   }
   
-  // Use the specific database ID from config 
-  const db = getFirestore(firebaseConfig.firestoreDatabaseId || '(default)');
+  // Try to determine the effective database ID
+  const effectiveDbId = firebaseConfig.firestoreDatabaseId || '(default)';
+  console.log("Targeting Firestore Database:", effectiveDbId);
+  
+  const db = getFirestore(appInstance, effectiveDbId);
   const serverTimestamp = FieldValue.serverTimestamp();
 
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY as string,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
+  // Example of using the new custom API key if needed elsewhere
+  const customApiKey = process.env.MY_CUSTOM_API_KEY;
+  if (customApiKey) {
+    console.log("Custom API key is available for use.");
+  }
+
+  let aiInstance: GoogleGenAI | null = null;
+  const getAI = () => {
+    if (!aiInstance) {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("GEMINI_API_KEY environment variable is required");
       }
+      aiInstance = new GoogleGenAI({
+        apiKey: process.env.GEMINI_API_KEY,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          }
+        }
+      });
     }
-  });
+    return aiInstance;
+  };
 
   const app = express();
   const PORT = 3000;
@@ -93,25 +116,48 @@ async function startServer() {
       res.json({ success: true });
     } catch (error: any) {
       console.error("Failed to log error to Firestore:", error?.message);
-      if (error?.code === 7 || error?.message?.includes("not been used in project")) {
-        console.error("CRITICAL: Cloud Firestore API is likely NOT ENABLED in project:", firebaseConfig.projectId);
-        console.error("Please visit https://console.cloud.google.com/apis/library/firestore.googleapis.com to enable it.");
-      } else if (error?.message?.includes("Missing or insufficient permissions")) {
-        console.error("CRITICAL: Service Account permissions issue for database:", firebaseConfig.firestoreDatabaseId);
+      
+      const isApiDisabled = error?.code === 7 || 
+                            error?.message?.includes("not been used in project") || 
+                            error?.message?.includes("has not been used in project") ||
+                            error?.message?.includes("API has not been used");
+      
+      const isPermissionDenied = error?.code === 7 || error?.message?.includes("Missing or insufficient permissions");
+
+      if (isApiDisabled) {
+        console.error("CRITICAL: Cloud Firestore API is NOT ENABLED in project:", firebaseConfig.projectId);
+        console.error("Action Required: Enable it at https://console.cloud.google.com/apis/library/firestore.googleapis.com");
+        
+        return res.status(503).json({ 
+          error: "Database configuration incomplete", 
+          message: "The Cloud Firestore API must be enabled in the Google Cloud Console for this project.",
+          apiLink: `https://console.cloud.google.com/apis/library/firestore.googleapis.com?project=${firebaseConfig.projectId}`
+        });
       }
-      res.status(500).json({ error: "Internal error" });
+
+      if (isPermissionDenied) {
+        console.error("CRITICAL: Permission Denied for project:", firebaseConfig.projectId);
+        console.error("Database ID:", firebaseConfig.firestoreDatabaseId);
+        console.error("This usually means the Service Account doesn't have roles/datastore.user or the rules are too restrictive (though admin usually bypasses them).");
+        
+        return res.status(403).json({
+          error: "Permission Denied",
+          message: "The service account does not have sufficient permissions to write to this database instance.",
+          projectId: firebaseConfig.projectId,
+          databaseId: firebaseConfig.firestoreDatabaseId
+        });
+      }
+      
+      res.status(500).json({ error: "Internal logging error" });
     }
   });
 
   // Public Health Check Endpoint
   app.get("/api/health-check", async (req, res) => {
     const startTime = Date.now();
-    const activeModel = "gemini-1.5-flash";
+    const activeModel = "gemini-3.5-flash";
     try {
-      if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY environment variable is missing");
-      }
-      
+      const ai = getAI();
       const response = await ai.models.generateContent({
         model: activeModel,
         contents: "Say OK",
@@ -119,13 +165,32 @@ async function startServer() {
       
       const duration = Date.now() - startTime;
       
+      // Check Firebase Connectivity
+      let firebaseStatus = "✅ Connected";
+      try {
+        await db.collection('health_check').doc('ping').get();
+      } catch (e: any) {
+        console.error("Firebase Health Check Detail:", e.message, "Code:", e.code);
+        if (e?.message?.includes("not been used in project") || e?.message?.includes("API has not been used")) {
+          firebaseStatus = "❌ API Disabled";
+        } else if (e?.code === 7 || e?.message?.includes("Missing or insufficient permissions")) {
+          firebaseStatus = "🚫 Permission Denied";
+        } else if (e?.code === 5) {
+          firebaseStatus = "❓ DB Not Found";
+        } else {
+          firebaseStatus = `⚠️ Issue: ${e.code || 'Unknown'}`;
+        }
+      }
+      
       res.json({ 
         gemini: "✅ Working",
-        firebase: "✅ Connected",
+        firebase: firebaseStatus,
+        customApiKey: process.env.MY_CUSTOM_API_KEY ? "✅ Configured" : "⚠️ Missing",
         model: activeModel,
         responseTime: `${duration}ms`,
         apiKeyStatus: "Configured",
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        projectId: firebaseConfig.projectId
       });
     } catch (error: any) {
       console.error("Health Check Internal Error:", error);
@@ -164,8 +229,9 @@ async function startServer() {
       // 3. Gemini API Status
       let geminiStatus: 'Working' | 'Failed' = 'Working';
       try {
+        const ai = getAI();
         await ai.models.generateContent({
-          model: "gemini-1.5-flash",
+          model: "gemini-3.5-flash",
           contents: "Hello",
         });
       } catch (e) {
@@ -216,11 +282,14 @@ async function startServer() {
   // API endpoints
   app.post("/api/generate-quiz", async (req, res) => {
     const maxRetries = 3;
-    const models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"]; 
+    const models = ["gemini-3.5-flash", "gemini-flash-latest"]; 
     
     const { config } = req.body;
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "Gemini API key is not configured" });
+    let ai: any;
+    try {
+      ai = getAI();
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
     }
 
     const prompt = `Generate a quiz with exactly ${config.questionCount} multiple-choice questions about "${config.subject}" ${config.topic ? `focusing on ${config.topic}` : ''}.
@@ -301,7 +370,7 @@ async function startServer() {
   });
 
   // 404 handler for API routes (Must be before Vite/Static catch-all)
-  app.all("/api/*", (req, res) => {
+  app.all("/api/*all", (req, res) => {
     console.warn(`404 Observed on API path: ${req.path}`);
     res.status(404).json({ 
       error: "API Route Not Found", 
