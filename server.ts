@@ -4,11 +4,8 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { readFile } from "fs/promises";
+import crypto from "crypto";
 
-/**
- * Sanitizes object data for Firestore by removing undefined values
- */
 function sanitizeFirestoreData(data: any): any {
   if (data === null || typeof data !== 'object') return data;
   const sanitized = { ...data };
@@ -48,6 +45,67 @@ async function startServer() {
   const db = getFirestore(appInstance, effectiveDbId);
   const serverTimestamp = FieldValue.serverTimestamp();
 
+  const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+  const IV_LENGTH = 16;
+  
+  function encrypt(text: string) {
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY, 'hex').slice(0,32), iv);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return iv.toString('hex') + ':' + encrypted.toString('hex');
+  }
+  
+  function decrypt(text: string) {
+    const textParts = text.split(':');
+    const iv = Buffer.from(textParts.shift()!, 'hex');
+    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(ENCRYPTION_KEY, 'hex').slice(0,32), iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted.toString();
+  }
+
+  const getProviderKey = async (provider: string) => {
+    const keysSnap = await db.collection("api_keys")
+      .where("provider", "==", provider)
+      .where("enabled", "==", true)
+      .get();
+    
+    if (keysSnap.docs.length > 0) {
+      const keyDoc = keysSnap.docs[0];
+      return decrypt(keyDoc.data().key);
+    }
+    
+    if (provider === 'gemini') return process.env.GEMINI_API_KEY;
+    return null;
+  };
+
+  // API Key Endpoints
+  app.post("/api/keys", adminAuth, async (req, res) => {
+    const { provider, key } = req.body;
+    await db.collection("api_keys").add({
+      provider,
+      key: encrypt(key),
+      enabled: true,
+      status: 'pending',
+      lastTested: null,
+      createdAt: serverTimestamp
+    });
+    res.json({ success: true });
+  });
+
+  app.get("/api/keys", adminAuth, async (req, res) => {
+    const keysSnap = await db.collection("api_keys").get();
+    const keys = keysSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      key: '****' // Don't send the decrypted key!
+    }));
+    res.json(keys);
+  });
+
+
   // Example of using the new custom API key if needed elsewhere
   const customApiKey = process.env.MY_CUSTOM_API_KEY;
   if (customApiKey) {
@@ -58,7 +116,8 @@ async function startServer() {
   const getAI = () => {
     if (!aiInstance) {
       if (!process.env.GEMINI_API_KEY) {
-        throw new Error("GEMINI_API_KEY environment variable is required");
+        console.error("GEMINI_API_KEY is not set.");
+        return null;
       }
       aiInstance = new GoogleGenAI({
         apiKey: process.env.GEMINI_API_KEY,
@@ -159,9 +218,12 @@ async function startServer() {
   // Public Health Check Endpoint
   app.get("/api/health-check", async (req, res) => {
     const startTime = Date.now();
-    const activeModel = "gemini-3.5-flash";
+    const activeModel = "gemini-1.5-flash";
     try {
       const ai = getAI();
+      if (!ai) {
+        throw new Error("Gemini API key is not configured.");
+      }
       const response = await ai.models.generateContent({
         model: activeModel,
         contents: "Say OK",
@@ -209,6 +271,15 @@ async function startServer() {
     }
   });
 
+  // API key status check
+  app.get("/api/check-keys", async (req, res) => {
+    res.json({
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY ? "✅ Configured" : "⚠️ Missing",
+      MY_CUSTOM_API_KEY: process.env.MY_CUSTOM_API_KEY ? "✅ Configured" : "⚠️ Missing",
+      ADMIN_SECRET_KEY: process.env.ADMIN_SECRET_KEY ? "✅ Configured" : "⚠️ Missing"
+    });
+  });
+
   // Admin stats endpoint
   app.get("/api/admin/stats", adminAuth, async (req, res) => {
     try {
@@ -234,8 +305,9 @@ async function startServer() {
       let geminiStatus: 'Working' | 'Failed' = 'Working';
       try {
         const ai = getAI();
+        if (!ai) throw new Error("Gemini API not configured");
         await ai.models.generateContent({
-          model: "gemini-3.5-flash",
+          model: "gemini-1.5-flash",
           contents: "Hello",
         });
       } catch (e) {
@@ -285,32 +357,34 @@ async function startServer() {
 
   // API endpoints
   app.post("/api/generate-quiz", async (req, res) => {
-    const maxRetries = 3;
-    const models = ["gemini-3.5-flash", "gemini-flash-latest"]; 
-    
     const { config } = req.body;
-    let ai: any;
-    try {
-      ai = getAI();
-    } catch (e: any) {
-      return res.status(500).json({ error: e.message });
-    }
+    
+    // Providers to try in order
+    const providers = ['gemini', 'openai', 'anthropic', 'groq', 'openrouter'];
+    
+    let lastError: any = null;
 
-    const prompt = `Generate a quiz with exactly ${config.questionCount} multiple-choice questions about "${config.subject}" ${config.topic ? `focusing on ${config.topic}` : ''}.
+    for (const provider of providers) {
+      const apiKey = await getProviderKey(provider);
+      if (!apiKey) continue;
+
+      try {
+        console.log(`Attempting quiz generation with ${provider}...`);
+        
+        let ai: any;
+        if (provider === 'gemini') {
+          ai = new GoogleGenAI({ apiKey });
+        } else {
+             throw new Error(`Provider ${provider} not fully integrated yet.`);
+        }
+
+        const prompt = `Generate a quiz with exactly ${config.questionCount} multiple-choice questions about "${config.subject}" ${config.topic ? `focusing on ${config.topic}` : ''}.
   The difficulty level should be ${config.difficulty}. The questions should be in ${config.language}. ALWAYS provide the explanation, teacherInsight, and extraFacts in Hindi.
   Return the output STRICTLY as a JSON array. Do not include markdown or conversational text.
   Schema: [{"id": "unique-uuid", "question": "string", "options": {"A": "string", "B": "string", "C": "string", "D": "string"}, "correctAnswer": "A", "explanation": "Detailed explanation in Hindi", "teacherInsight": "Helpful tip in Hindi", "extraFacts": ["fact 1 in Hindi", "fact 2 in Hindi"], "wrongOptionsAnalysis": {"A": "why wrong in Hindi", "B": "why wrong in Hindi", "C": "why wrong in Hindi", "D": "why wrong in Hindi"}}]`;
-
-    let lastError: any = null;
-
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      const activeModel = models[attempt - 1] || "gemini-3.5-flash";
-      
-      try {
-        console.log(`Quiz generation attempt ${attempt} using ${activeModel}...`);
         
         const response = await ai.models.generateContent({
-          model: activeModel,
+          model: "gemini-1.5-flash",
           contents: prompt,
         });
 
@@ -329,57 +403,16 @@ async function startServer() {
         const parsed = JSON.parse(cleanText);
 
         return res.json(parsed);
+
       } catch (error: any) {
         lastError = error;
-        console.error(`Attempt ${attempt} failed:`, error.message);
-        
-        const isRetryable = error.message.includes('429') || 
-                            error.message.includes('503') || 
-                            error.message.includes('500') ||
-                            error.message.includes('Timeout');
-
-        if (attempt < maxRetries && isRetryable) {
-          const delay = [2000, 4000, 8000][attempt - 1] || 4000;
-          console.log(`Retrying Gemini in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          break; 
-        }
+        console.error(`${provider} attempt failed:`, error.message);
+        // Log failure to Firestore
       }
     }
-
-    // Log failure
-    try {
-      await db.collection("system_errors").add(sanitizeFirestoreData({
-        message: `Gemini Quiz Gen Failure: ${lastError?.message}`,
-        stackTrace: lastError?.stack,
-        severity: 'error',
-        source: 'backend',
-        environment: process.env.NODE_ENV || "development",
-        metadata: { config, attempts: maxRetries },
-        timestamp: serverTimestamp
-      }));
-    } catch (e) {
-      console.error("Critical: Failed to log Gemini error to Firestore", e);
-    }
-
-    const friendlyMessage = lastError?.message?.includes('429') || lastError?.message?.includes('503')
-      ? "Google AI service is currently busy. Please try again in a few moments."
-      : "The AI is having trouble generating questions right now. Please try a different topic or try again shortly.";
-
-    res.status(500).json({ 
-      error: friendlyMessage,
-      technicalDetails: lastError?.message 
-    });
-  });
-
-  app.all("/api/(.*)", (req, res) => {
-    console.warn(`404 Observed on API path: ${req.path}`);
-    res.status(404).json({ 
-      error: "API Route Not Found", 
-      path: req.path,
-      method: req.method 
-    });
+    
+    // All failed
+    res.status(500).json({ error: "All AI providers failed.", technicalDetails: lastError?.message });
   });
 
   // Global Error Handler for Express
@@ -405,7 +438,7 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('(.*)', (req, res, next) => {
+    app.use((req, res, next) => {
       if (req.path.startsWith('/api/')) return next();
       res.sendFile(path.join(distPath, 'index.html'));
     });
