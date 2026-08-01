@@ -10,26 +10,27 @@ export interface LogEntry {
 
 export const logSystemError = async (message: string, stack?: string, severity: 'info' | 'warning' | 'error' | 'critical' = 'error', source: string = 'frontend', metadata: any = {}) => {
   try {
+    const errorPayload = {
+      message: message || "Unknown error",
+      stack: stack || "",
+      userId: auth.currentUser?.uid || "anonymous",
+      userEmail: auth.currentUser?.email || "unknown",
+      severity,
+      source,
+      metadata: metadata || {}
+    };
+
     const response = await fetch("/api/log-error", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/json"
       },
-      body: JSON.stringify({
-        message,
-        stack,
-        userId: auth.currentUser?.uid,
-        userEmail: auth.currentUser?.email,
-        severity,
-        source,
-        metadata
-      }),
+      body: JSON.stringify(errorPayload),
     });
 
-    if (!response.ok && response.headers.get("content-type")?.includes("application/json")) {
-      const errData = await response.json();
-      console.error("Server-side logging error:", errData);
+    if (!response.ok) {
+        console.warn("System error logged with non-200 status:", response.status);
     }
   } catch (err) {
     console.error("Failed to log system error to server:", err);

@@ -4,6 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { readFile } from "fs/promises";
 import crypto from "crypto";
 
 function sanitizeFirestoreData(data: any): any {
@@ -20,6 +21,9 @@ function sanitizeFirestoreData(data: any): any {
 }
 
 async function startServer() {
+  const app = express();
+  const PORT = 3000;
+  
   const firebaseConfig = JSON.parse(
     await readFile(path.join(process.cwd(), "firebase-applet-config.json"), "utf8")
   );
@@ -67,7 +71,7 @@ async function startServer() {
   }
 
   const getProviderKey = async (provider: string) => {
-    const keysSnap = await db.collection("api_keys")
+    const keysSnap = await db.collection("api_providers")
       .where("provider", "==", provider)
       .where("enabled", "==", true)
       .get();
@@ -80,31 +84,6 @@ async function startServer() {
     if (provider === 'gemini') return process.env.GEMINI_API_KEY;
     return null;
   };
-
-  // API Key Endpoints
-  app.post("/api/keys", adminAuth, async (req, res) => {
-    const { provider, key } = req.body;
-    await db.collection("api_keys").add({
-      provider,
-      key: encrypt(key),
-      enabled: true,
-      status: 'pending',
-      lastTested: null,
-      createdAt: serverTimestamp
-    });
-    res.json({ success: true });
-  });
-
-  app.get("/api/keys", adminAuth, async (req, res) => {
-    const keysSnap = await db.collection("api_keys").get();
-    const keys = keysSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      key: '****' // Don't send the decrypted key!
-    }));
-    res.json(keys);
-  });
-
 
   // Example of using the new custom API key if needed elsewhere
   const customApiKey = process.env.MY_CUSTOM_API_KEY;
@@ -131,9 +110,6 @@ async function startServer() {
     return aiInstance;
   };
 
-  const app = express();
-  const PORT = 3000;
-
   app.use(express.json());
 
   // Admin middleware
@@ -145,6 +121,78 @@ async function startServer() {
       res.status(401).json({ error: "Unauthorized" });
     }
   };
+
+  // API Key Endpoints
+  app.post("/api/keys", adminAuth, async (req, res) => {
+    const { provider, key } = req.body;
+    await db.collection("api_providers").add({
+      provider,
+      key: encrypt(key),
+      enabled: true,
+      status: 'pending',
+      lastTested: null,
+      createdAt: serverTimestamp
+    });
+    res.json({ success: true });
+  });
+
+  app.get("/api/keys", adminAuth, async (req, res) => {
+    const keysSnap = await db.collection("api_providers").get();
+    const keys = keysSnap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      key: '****' // Don't send the decrypted key!
+    }));
+    res.json(keys);
+  });
+
+  app.delete("/api/keys/:id", adminAuth, async (req, res) => {
+    await db.collection("api_providers").doc(req.params.id).delete();
+    res.json({ success: true });
+  });
+
+  app.post("/api/test-provider", adminAuth, async (req, res) => {
+    const { provider, apiKey: rawKey } = req.body;
+    
+    const startTime = Date.now();
+    let status = 'Failed';
+    let error = null;
+
+    try {
+        if (provider === 'gemini') {
+          const ai = new GoogleGenAI({ apiKey: rawKey });
+          await ai.models.generateContent({
+            model: "gemini-1.5-flash",
+            contents: "Hello",
+          });
+          status = 'Working';
+        } else {
+             throw new Error(`Provider ${provider} not fully integrated yet.`);
+        }
+    } catch (err: any) {
+        error = err.message;
+    }
+
+    const latency = Date.now() - startTime;
+    
+    res.json({
+        provider,
+        status,
+        latency: `${latency}ms`,
+        error
+    });
+  });
+
+  app.get("/api/providers-health", adminAuth, async (req, res) => {
+    const providersSnap = await db.collection("api_providers").get();
+    const statuses = providersSnap.docs.map(doc => ({
+        id: doc.id,
+        provider: doc.data().provider,
+        status: doc.data().status,
+        lastTested: doc.data().lastTested
+    }));
+    res.json(statuses);
+  });
 
   // Error logging endpoint
   app.post("/api/log-error", async (req, res) => {
@@ -218,7 +266,7 @@ async function startServer() {
   // Public Health Check Endpoint
   app.get("/api/health-check", async (req, res) => {
     const startTime = Date.now();
-    const activeModel = "gemini-1.5-flash";
+    const activeModel = "gemini-1.5-flash-latest";
     try {
       const ai = getAI();
       if (!ai) {
@@ -413,6 +461,67 @@ async function startServer() {
     
     // All failed
     res.status(500).json({ error: "All AI providers failed.", technicalDetails: lastError?.message });
+  });
+
+  // AI with Grounding (Google Search)
+  app.post("/api/ai/search-query", async (req, res) => {
+    const { prompt } = req.body;
+    try {
+      const ai = getAI();
+      if (!ai) throw new Error("AI not configured");
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: prompt,
+        config: {
+          tools: [{ googleSearch: {} }]
+        }
+      });
+      res.json({ result: response.text });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // AI with High Thinking
+  app.post("/api/ai/complex-query", async (req, res) => {
+    const { prompt } = req.body;
+    try {
+      const ai = getAI();
+      if (!ai) throw new Error("AI not configured");
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-pro", // High intelligence model
+        contents: prompt,
+        config: {
+          thinkingConfig: {
+            includeThoughts: true // "High Thinking" equivalent
+          }
+        }
+      });
+      res.json({ result: response.text });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Bulk import quiz questions
+  app.post("/api/admin/bulk-import-questions", async (req, res) => {
+    try {
+      const data = await readFile(path.join(process.cwd(), "src/data/questions.json"), "utf8");
+      const { questions } = JSON.parse(data);
+      if (!Array.isArray(questions)) throw new Error("Invalid format");
+      
+      const batch = db.batch();
+      questions.forEach((q: any) => {
+        const ref = db.collection("quizzes").doc();
+        batch.set(ref, q);
+      });
+      
+      await batch.commit();
+      res.json({ message: "Imported successfully", count: questions.length });
+    } catch (error: any) {
+      console.error("Bulk import failed:", error);
+      res.status(500).json({ error: error.message });
+    }
   });
 
   // Global Error Handler for Express

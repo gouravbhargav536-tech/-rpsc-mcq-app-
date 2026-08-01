@@ -52,11 +52,12 @@ import HistoryPanel, { FirestoreQuizResult } from './components/HistoryPanel';
 import SessionTimer, { formatTime } from './components/SessionTimer';
 import SystemMonitor from './components/SystemMonitor';
 import AdminMonitor from './pages/AdminMonitor';
+import StoredQuizTaker from './components/StoredQuizTaker';
 import { logSystemError } from './services/logger';
 import { useFeedback } from './hooks/useFeedback';
 
 export default function App() {
-  const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS'>('LANDING');
+  const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS' | 'FIREBASE_QUIZ' | 'SCIENCE_QUIZ' | 'MATH_QUIZ' | 'CURRENT_AFFAIRS_QUIZ'>('LANDING');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [theme, setTheme] = useState<ThemeType>('geometric');
@@ -596,6 +597,23 @@ export default function App() {
 
       <AnimatePresence mode="wait">
         
+        {/* FIREBASE QUIZ SCREEN */}
+        {screen === 'FIREBASE_QUIZ' && (
+          <StoredQuizTaker onExit={() => setScreen('HOME')} />
+        )}
+        
+        {screen === 'SCIENCE_QUIZ' && (
+          <StoredQuizTaker category="science" onExit={() => setScreen('HOME')} />
+        )}
+
+        {screen === 'MATH_QUIZ' && (
+          <StoredQuizTaker category="math" onExit={() => setScreen('HOME')} />
+        )}
+
+        {screen === 'CURRENT_AFFAIRS_QUIZ' && (
+          <StoredQuizTaker category="current_affairs" onExit={() => setScreen('HOME')} />
+        )}
+        
         {/* LANDING SCREEN */}
         {screen === 'LANDING' && (
           <motion.div
@@ -920,6 +938,30 @@ export default function App() {
                                 )}
 
                                 <div className="bg-white border border-slate-200 rounded-[3rem] p-8 md:p-10 shadow-sm flex-1 flex flex-col hover:border-indigo-100 transition-all">
+                                  <button
+                                    onClick={() => setScreen('FIREBASE_QUIZ')}
+                                    className="mb-8 w-full p-4 bg-indigo-900 rounded-3xl text-white font-bold hover:bg-indigo-800 transition-all text-center"
+                                  >
+                                    Stored Quizzes
+                                  </button>
+                                  <button
+                                    onClick={() => setScreen('SCIENCE_QUIZ')}
+                                    className="mb-8 w-full p-4 bg-emerald-900 rounded-3xl text-white font-bold hover:bg-emerald-800 transition-all text-center"
+                                  >
+                                    Science Quizzes
+                                  </button>
+                                  <button
+                                    onClick={() => setScreen('MATH_QUIZ')}
+                                    className="mb-4 w-full p-4 bg-purple-900 rounded-3xl text-white font-bold hover:bg-purple-800 transition-all text-center"
+                                  >
+                                    Math Quizzes
+                                  </button>
+                                  <button
+                                    onClick={() => setScreen('CURRENT_AFFAIRS_QUIZ')}
+                                    className="mb-8 w-full p-4 bg-amber-800 rounded-3xl text-white font-bold hover:bg-amber-700 transition-all text-center"
+                                  >
+                                    Current Affairs / करंट अफेयर्स
+                                  </button>
                                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2 font-display">
                                     <Award size={14} className="text-primary" /> Achievements Cabinet
                                   </h3>

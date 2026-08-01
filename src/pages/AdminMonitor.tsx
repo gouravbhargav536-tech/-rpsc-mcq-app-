@@ -27,6 +27,7 @@ export default function AdminMonitor() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminKey, setAdminKey] = useState('');
   const [stats, setStats] = useState<any>(null);
+  const [totalQuestions, setTotalQuestions] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [healthResults, setHealthResults] = useState<SystemHealth | null>(null);
@@ -42,6 +43,19 @@ export default function AdminMonitor() {
       setStats(data);
       setIsAuthenticated(true);
       localStorage.setItem('admin_key', key);
+      
+      // Fetch questions count
+      console.log("DEBUG: Fetching questions count...");
+      fetch('/api/debug/count-questions')
+        .then(res => {
+          console.log("DEBUG: Questions count fetch response status:", res.status);
+          return res.json();
+        })
+        .then(data => {
+            console.log("DEBUG: Questions count data:", data);
+            setTotalQuestions(data.totalQuestions);
+        })
+        .catch(err => console.error("DEBUG: Failed to fetch questions count", err));
       
       // Auto-run health check on login
       runHealthCheck(key);
@@ -176,6 +190,26 @@ export default function AdminMonitor() {
             </div>
             <p className="text-slate-400 text-sm font-medium">Total Registered Users</p>
             <h2 className="text-3xl font-bold text-white mt-1">{stats?.totalUsers || 0}</h2>
+          </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm">
+            <div className="flex justify-between items-start mb-4">
+              <Database className="w-6 h-6 text-indigo-400" />
+              <StatusBadge status="Working" />
+            </div>
+            <p className="text-slate-400 text-sm font-medium">Total Questions</p>
+            <h2 className="text-3xl font-bold text-white mt-1">{totalQuestions !== null ? totalQuestions : '...'}</h2>
+            <button 
+              onClick={() => {
+                fetch('/api/admin/bulk-import-questions', { method: 'POST' })
+                  .then(res => res.json())
+                  .then(data => alert(data.message))
+                  .catch(err => alert("Failed to import: " + err));
+              }}
+              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+            >
+              Bulk Import Questions
+            </button>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm">
