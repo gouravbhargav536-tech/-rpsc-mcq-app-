@@ -57,7 +57,7 @@ import { logSystemError } from './services/logger';
 import { useFeedback } from './hooks/useFeedback';
 
 export default function App() {
-  const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS' | 'FIREBASE_QUIZ' | 'SCIENCE_QUIZ' | 'MATH_QUIZ' | 'CURRENT_AFFAIRS_QUIZ'>('LANDING');
+  const [screen, setScreen] = useState<'LANDING' | 'INTRO' | 'AUTH' | 'HOME' | 'SETUP' | 'RULES' | 'QUIZ' | 'RESULTS' | 'FIREBASE_QUIZ' | 'SCIENCE_QUIZ' | 'MATH_QUIZ' | 'CURRENT_AFFAIRS_QUIZ' | 'RRB_GROUP_D_QUIZ' | 'ENGLISH_GRAMMAR_QUIZ'>('LANDING');
   const [loading, setLoading] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [theme, setTheme] = useState<ThemeType>('geometric');
@@ -547,7 +547,7 @@ export default function App() {
   ];
 
   return (
-    <div className={`h-screen bg-page flex flex-col font-sans text-main overflow-hidden theme-${theme} relative`} data-theme={theme}>
+    <div className={`min-h-screen bg-page flex flex-col font-sans text-main theme-${theme} relative`} data-theme={theme}>
       {screen === ('ADMIN' as any) ? (
         <AdminMonitor />
       ) : (
@@ -597,23 +597,6 @@ export default function App() {
 
       <AnimatePresence mode="wait">
         
-        {/* FIREBASE QUIZ SCREEN */}
-        {screen === 'FIREBASE_QUIZ' && (
-          <StoredQuizTaker onExit={() => setScreen('HOME')} />
-        )}
-        
-        {screen === 'SCIENCE_QUIZ' && (
-          <StoredQuizTaker category="science" onExit={() => setScreen('HOME')} />
-        )}
-
-        {screen === 'MATH_QUIZ' && (
-          <StoredQuizTaker category="math" onExit={() => setScreen('HOME')} />
-        )}
-
-        {screen === 'CURRENT_AFFAIRS_QUIZ' && (
-          <StoredQuizTaker category="current_affairs" onExit={() => setScreen('HOME')} />
-        )}
-        
         {/* LANDING SCREEN */}
         {screen === 'LANDING' && (
           <motion.div
@@ -621,7 +604,7 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex flex-col items-center justify-center h-full bg-slate-900 text-white p-6"
+            className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-6"
           >
             <div className="flex items-center gap-4 mb-8">
               <div className="w-16 h-16 bg-primary rounded flex items-center justify-center text-white font-bold text-3xl shadow-lg font-display">A</div>
@@ -661,7 +644,7 @@ export default function App() {
             key="app-shell"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col h-full overflow-hidden"
+            className="flex flex-col min-h-screen flex-1"
           >
             {/* Header Navigation */}
             <header className={`h-16 md:h-20 flex items-center justify-between px-4 md:px-8 shrink-0 relative z-20 transition-all duration-700 ${
@@ -774,7 +757,7 @@ export default function App() {
             </header>
 
             {/* Main Content Area */}
-            <main className="flex-1 flex overflow-hidden relative">
+            <main className="flex-1 flex relative">
               
               {/* Sidebar Left: Progress & Stats (Quiz) - Desktop and Tablet */}
               {screen === 'QUIZ' && !loading && (
@@ -836,8 +819,44 @@ export default function App() {
               )}
 
               {/* Central Section */}
-              <section className="flex-1 bg-slate-50 overflow-y-auto px-4 md:px-12 py-8 md:py-12 flex flex-col pb-32 md:pb-12">
+              <section className="flex-1 bg-slate-50 px-4 md:px-12 py-8 md:py-12 flex flex-col pb-32 md:pb-12 min-h-0">
                 <AnimatePresence mode="wait">
+                  {screen === 'FIREBASE_QUIZ' && (
+                    <motion.div key="firebase-quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto w-full">
+                      <StoredQuizTaker onExit={() => setScreen('HOME')} />
+                    </motion.div>
+                  )}
+
+                  {screen === 'RRB_GROUP_D_QUIZ' && (
+                    <motion.div key="rrb-quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto w-full">
+                      <StoredQuizTaker category="rrb_group_d" onExit={() => setScreen('HOME')} />
+                    </motion.div>
+                  )}
+                  
+                  {screen === 'ENGLISH_GRAMMAR_QUIZ' && (
+                    <motion.div key="english-quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto w-full">
+                      <StoredQuizTaker category="english" onExit={() => setScreen('HOME')} />
+                    </motion.div>
+                  )}
+                  
+                  {screen === 'SCIENCE_QUIZ' && (
+                    <motion.div key="science-quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto w-full">
+                      <StoredQuizTaker category="science" onExit={() => setScreen('HOME')} />
+                    </motion.div>
+                  )}
+
+                  {screen === 'MATH_QUIZ' && (
+                    <motion.div key="math-quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto w-full">
+                      <StoredQuizTaker category="math" onExit={() => setScreen('HOME')} />
+                    </motion.div>
+                  )}
+
+                  {screen === 'CURRENT_AFFAIRS_QUIZ' && (
+                    <motion.div key="ca-quiz" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-4xl mx-auto w-full">
+                      <StoredQuizTaker category="current_affairs" onExit={() => setScreen('HOME')} />
+                    </motion.div>
+                  )}
+
                   {screen === 'HOME' && (
                     <motion.div
                       key="home-grid"
@@ -937,31 +956,71 @@ export default function App() {
                                     </button>
                                 )}
 
-                                <div className="bg-white border border-slate-200 rounded-[3rem] p-8 md:p-10 shadow-sm flex-1 flex flex-col hover:border-indigo-100 transition-all">
+                                <div className="bg-white border border-slate-200 rounded-[3rem] p-6 md:p-10 shadow-sm flex-1 flex flex-col hover:border-indigo-100 transition-all">
+                                  {/* Featured RRB Group D Paper */}
                                   <button
-                                    onClick={() => setScreen('FIREBASE_QUIZ')}
-                                    className="mb-8 w-full p-4 bg-indigo-900 rounded-3xl text-white font-bold hover:bg-indigo-800 transition-all text-center"
+                                    onClick={() => setScreen('RRB_GROUP_D_QUIZ')}
+                                    className="mb-4 w-full p-5 bg-gradient-to-r from-blue-700 via-indigo-700 to-purple-800 rounded-3xl text-white font-bold hover:brightness-110 transition-all text-left shadow-xl border border-indigo-400/30 flex items-center justify-between gap-4 group"
                                   >
-                                    Stored Quizzes
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-11 h-11 bg-white/10 rounded-2xl flex items-center justify-center text-xl shrink-0 group-hover:scale-110 transition-transform">
+                                        🚂
+                                      </div>
+                                      <div>
+                                        <p className="font-bold text-base leading-tight">RRB Group D Mock Paper 2026</p>
+                                        <p className="text-[11px] text-indigo-200 font-medium mt-0.5">75 Qs • 4 Sections (Science, Math, Reasoning, Current Affairs)</p>
+                                      </div>
+                                    </div>
+                                    <span className="text-xs bg-white text-indigo-950 px-3 py-1.5 rounded-xl font-extrabold shrink-0 shadow-sm group-hover:bg-amber-400 transition-colors">
+                                      Start Test
+                                    </span>
                                   </button>
+
+                                  {/* Featured English Grammar Quiz */}
                                   <button
-                                    onClick={() => setScreen('SCIENCE_QUIZ')}
-                                    className="mb-8 w-full p-4 bg-emerald-900 rounded-3xl text-white font-bold hover:bg-emerald-800 transition-all text-center"
+                                    onClick={() => setScreen('ENGLISH_GRAMMAR_QUIZ')}
+                                    className="mb-6 w-full p-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-800 rounded-3xl text-white font-bold hover:brightness-110 transition-all text-left shadow-xl border border-emerald-400/30 flex items-center justify-between gap-4 group"
                                   >
-                                    Science Quizzes
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-11 h-11 bg-white/10 rounded-2xl flex items-center justify-center text-xl shrink-0 group-hover:scale-110 transition-transform">
+                                        📚
+                                      </div>
+                                      <div>
+                                        <p className="font-bold text-base leading-tight">Advanced English Grammar</p>
+                                        <p className="text-[11px] text-emerald-100 font-medium mt-0.5">Focus: Distributives & Quantifiers</p>
+                                      </div>
+                                    </div>
+                                    <span className="text-xs bg-white text-emerald-950 px-3 py-1.5 rounded-xl font-extrabold shrink-0 shadow-sm group-hover:bg-amber-400 transition-colors">
+                                      Take Quiz
+                                    </span>
                                   </button>
-                                  <button
-                                    onClick={() => setScreen('MATH_QUIZ')}
-                                    className="mb-4 w-full p-4 bg-purple-900 rounded-3xl text-white font-bold hover:bg-purple-800 transition-all text-center"
-                                  >
-                                    Math Quizzes
-                                  </button>
-                                  <button
-                                    onClick={() => setScreen('CURRENT_AFFAIRS_QUIZ')}
-                                    className="mb-8 w-full p-4 bg-amber-800 rounded-3xl text-white font-bold hover:bg-amber-700 transition-all text-center"
-                                  >
-                                    Current Affairs / करंट अफेयर्स
-                                  </button>
+
+                                  <div className="grid grid-cols-2 gap-3 mb-6">
+                                    <button
+                                      onClick={() => setScreen('SCIENCE_QUIZ')}
+                                      className="p-3.5 bg-emerald-900 rounded-2xl text-white font-bold hover:bg-emerald-800 transition-all text-center text-xs flex items-center justify-center gap-1.5"
+                                    >
+                                      <span>🔬</span> Science
+                                    </button>
+                                    <button
+                                      onClick={() => setScreen('MATH_QUIZ')}
+                                      className="p-3.5 bg-purple-900 rounded-2xl text-white font-bold hover:bg-purple-800 transition-all text-center text-xs flex items-center justify-center gap-1.5"
+                                    >
+                                      <span>📐</span> Math
+                                    </button>
+                                    <button
+                                      onClick={() => setScreen('CURRENT_AFFAIRS_QUIZ')}
+                                      className="p-3.5 bg-amber-800 rounded-2xl text-white font-bold hover:bg-amber-700 transition-all text-center text-xs flex items-center justify-center gap-1.5"
+                                    >
+                                      <span>📰</span> Current Affairs
+                                    </button>
+                                    <button
+                                      onClick={() => setScreen('FIREBASE_QUIZ')}
+                                      className="p-3.5 bg-indigo-900 rounded-2xl text-white font-bold hover:bg-indigo-800 transition-all text-center text-xs flex items-center justify-center gap-1.5"
+                                    >
+                                      <span>📚</span> All Firebase Qs
+                                    </button>
+                                  </div>
                                   <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8 flex items-center gap-2 font-display">
                                     <Award size={14} className="text-primary" /> Achievements Cabinet
                                   </h3>
